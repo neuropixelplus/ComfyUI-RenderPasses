@@ -24,6 +24,8 @@ It works on a **whole folder of BGs at once**, in two stages. You can bring your
 
 Each pass can be upscaled to 4K individually or all at once. Image passes go through SeedVR2. Data passes (depth, normals, mattes) use clean resampling so no texture gets invented.
 
+**New here? Read the [step-by-step guide with screenshots](docs/GUIDE.md).**
+
 ## Install
 
 Requires **ComfyUI 0.43 or newer**. Most of the nodes RenderPasses uses ship with ComfyUI: MoGe, SAM 3, SeedVR2, Fibo 2, MOSS, Marigold, TextGenerate and Qwen-Image-Layered.
