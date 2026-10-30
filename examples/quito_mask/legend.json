@@ -1,0 +1,116 @@
+[
+ {
+  "name": "Sky",
+  "color": "#6EC6FF",
+  "group": "Sky",
+  "material": "sky"
+ },
+ {
+  "name": "Clouds",
+  "color": "#FFFFFF",
+  "group": "Sky",
+  "material": "sky"
+ },
+ {
+  "name": "Volcano",
+  "color": "#4B1E5A",
+  "group": "Landscape",
+  "material": "rock"
+ },
+ {
+  "name": "Halo",
+  "color": "#FFF200",
+  "group": "Sky",
+  "material": "light"
+ },
+ {
+  "name": "Distant city",
+  "color": "#1A237E",
+  "group": "Landscape",
+  "material": "light"
+ },
+ {
+  "name": "Bridge",
+  "color": "#8D5524",
+  "group": "Transit",
+  "material": "stone"
+ },
+ {
+  "name": "Train",
+  "color": "#FF4FD8",
+  "group": "Transit",
+  "material": "metal"
+ },
+ {
+  "name": "Cobblestone street",
+  "color": "#808080",
+  "group": "Ground",
+  "material": "wet stone"
+ },
+ {
+  "name": "Background buildings",
+  "color": "#26A69A",
+  "group": "Buildings",
+  "material": "stucco"
+ },
+ {
+  "name": "Church",
+  "color": "#8E2442",
+  "group": "Buildings",
+  "material": "stone"
+ },
+ {
+  "name": "Buildings left",
+  "color": "#E53935",
+  "group": "Buildings",
+  "material": "stucco"
+ },
+ {
+  "name": "Buildings right",
+  "color": "#FB8C00",
+  "group": "Buildings",
+  "material": "stucco"
+ },
+ {
+  "name": "Neon signs",
+  "color": "#D500F9",
+  "group": "Lights",
+  "material": "light"
+ },
+ {
+  "name": "Street lamps",
+  "color": "#00E5FF",
+  "group": "Lights",
+  "material": "metal"
+ },
+ {
+  "name": "Food cart",
+  "color": "#1B5E20",
+  "group": "Props",
+  "material": "metal"
+ },
+ {
+  "name": "Cart awning",
+  "color": "#7C4DFF",
+  "group": "Props",
+  "material": "fabric"
+ },
+ {
+  "name": "Stools",
+  "color": "#C6FF00",
+  "group": "Props",
+  "material": "plastic"
+ },
+ {
+  "name": "Robot",
+  "color": "#2962FF",
+  "group": "Props",
+  "material": "metal"
+ },
+ {
+  "name": "People",
+  "color": "#000000",
+  "group": "Characters",
+  "material": "skin"
+ }
+]

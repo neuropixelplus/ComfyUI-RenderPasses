@@ -124,6 +124,10 @@ The parallax planes follow those elements.
 - **Effects are set aside.** Fog, haze, VFX, cast shadows, layers with non-normal blend modes and layers under 30 % opacity get no ID and don't hide anything.
 - **Back to AI** forgets the PSD and goes back to the automatic mattes.
 
+![A colour mask, the plate made from it, and the Cryptomatte with 19 named IDs](img/09_mask_to_cryptomatte.jpg)
+
+Try it with the example in [`examples/quito_mask/`](../examples/quito_mask): a plate, its 19-colour ID mask and the legend.
+
 ## 8. Take it to Nuke
 
 In the plate's header, **Multi-layer EXR ↓** downloads `pases_nuke.exr`, with every pass of the plate as named layers plus the Cryptomatte. **Nuke .nk ↓** downloads `pases.nk`, a script that reads that EXR and rebuilds the beauty (`albedo × raw lighting`), with the Cryptomatte and ZDefocus nodes already wired.
