@@ -1,0 +1,9 @@
+numpy
+Pillow
+opencv-python
+OpenImageIO
+# Cryptomatte from the artist's layered PSD (optional: without it only that route is unavailable)
+psd-tools
+# Spanish → English master prompt (optional; MarianMT on CPU)
+transformers
+sentencepiece

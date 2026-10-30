@@ -1,0 +1,54 @@
+{
+  "1": {
+    "class_type": "RenderPassesLayeredSplat",
+    "_meta": {
+      "title": "RenderPasses · Layered Gaussian splat"
+    },
+    "inputs": {
+      "pass_folder": "renderpasses/20261029_212216/pases_original/futuro_1_00001",
+      "density": 0.625,
+      "scale": 1.0,
+      "include_hidden_fills": true,
+      "orientation": "surface",
+      "save_ply": true
+    }
+  },
+  "2": {
+    "class_type": "RenderSplat",
+    "_meta": {
+      "title": "Render Splat · the plate's own camera"
+    },
+    "inputs": {
+      "splat": [
+        "1",
+        0
+      ],
+      "camera_info": [
+        "1",
+        1
+      ],
+      "width": 1280,
+      "height": 720,
+      "frames": 1,
+      "splat_scale": 1.0,
+      "sharpen": 1.0,
+      "headlight_shading": 0.0,
+      "opacity_threshold": 0.0,
+      "render_style": "color",
+      "background": "#000000"
+    }
+  },
+  "3": {
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save render"
+    },
+    "inputs": {
+      "images": [
+        "2",
+        0
+      ],
+      "filename_prefix": "renderpasses/splat_render"
+    }
+  }
+}

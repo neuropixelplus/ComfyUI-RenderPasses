@@ -1,0 +1,110 @@
+/* Vidrio design tokens */
+@font-face{font-family:"Geist";src:url("fonts/Geist-latin.woff2") format("woff2");font-weight:300 700;font-style:normal;font-display:swap}
+@font-face{font-family:"Geist Mono";src:url("fonts/GeistMono-latin.woff2") format("woff2");font-weight:400 600;font-style:normal;font-display:swap}
+:root, [data-theme="negro"] {
+  --fondo: #000000;
+  --tinta: #f4f4f7;
+  --tinta-2: #a7a7b3;
+  --tinta-3: #7e7e8b;
+  --acento: #e6f55a;
+  --en-acento: #17190a;
+  --acento-texto: #e6f55a;
+  --marca: #e8546f;
+  --ok: #45d98f;
+  --aviso: #ffc24b;
+  --error: #ff7a7a;
+  --vidrio-a: rgba(6,6,10,0.56);
+  --vidrio-b: rgba(255,255,255,0.80);
+  --vidrio-c: rgba(255,255,255,0.03);
+  --canto: rgba(255,255,255,0.62);
+  --canto-suave: rgba(255,255,255,0.08);
+  --riel: rgba(255,255,255,0.14);
+  --hundido: rgba(0,0,0,0.5);
+  --bisel-a: inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(255,255,255,0.04), inset 0 10px 22px -18px rgba(255,255,255,0.3);
+  --bisel-b: inset 0 1px 0 #ffffff, inset 0 -1px 0 rgba(20,22,40,0.08), inset 0 -8px 14px -10px rgba(90,100,140,0.25);
+  --bisel-c: inset 0 2px 1px rgba(255,255,255,0.65), inset 0 -2px 2px rgba(255,255,255,0.25), inset 0 0 22px rgba(255,255,255,0.22);
+  --sombra-placa: 0 24px 50px -24px rgba(0,0,0,0.9);
+  --sombra-flota: 0 20px 44px -16px rgba(0,0,0,0.95);
+  --sombra-clara: 0 18px 30px -14px rgba(40,40,80,0.35), 0 2px 6px rgba(40,40,80,0.12);
+  --brillo-acento: 0 0 12px 2px rgba(230,245,90,0.7), 0 0 30px 6px rgba(230,245,90,0.25);
+}
+[data-theme="claro"] {
+  --fondo: #eceef4;
+  --tinta: #14151b;
+  --tinta-2: #4a4c5a;
+  --tinta-3: #62646f;
+  --acento: #e6f55a;
+  --en-acento: #17190a;
+  --acento-texto: #5d6a00;
+  --marca: #d63c5a;
+  --ok: #0f7a47;
+  --aviso: #8a5a00;
+  --error: #b3262f;
+  --vidrio-a: rgba(255,255,255,0.62);
+  --vidrio-b: rgba(255,255,255,0.72);
+  --vidrio-c: rgba(255,255,255,0.06);
+  --canto: #ffffff;
+  --canto-suave: rgba(255,255,255,0.35);
+  --riel: rgba(20,22,30,0.14);
+  --hundido: rgba(20,22,30,0.08);
+}
+:root {
+  --e-1: 4px;
+  --e-2: 8px;
+  --e-3: 12px;
+  --e-4: 16px;
+  --e-5: 20px;
+  --e-6: 28px;
+  --r-campo: 18px;
+  --r-placa: 28px;
+  --r-hoja: 32px;
+  --r-capsula: 999px;
+  --desenfoque-a: blur(18px) saturate(150%);
+  --desenfoque-b: blur(14px) saturate(170%);
+  --desenfoque-c: blur(1px) saturate(130%);
+  --t-gel: 300ms;
+  --t-gota: 420ms;
+  --curva-rebote: cubic-bezier(0.3,1.5,0.5,1);
+  --font-sans: "Geist", -apple-system, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, Menlo, Consolas, monospace;
+  --t-titulo-xl-size: 34px;
+  --t-titulo-xl-lh: 38px;
+  --t-titulo-xl-peso: 600;
+  --t-titulo-xl-esp: -0.03em;
+  --t-titulo-size: 20px;
+  --t-titulo-lh: 26px;
+  --t-titulo-peso: 600;
+  --t-titulo-esp: -0.01em;
+  --t-cuerpo-size: 15px;
+  --t-cuerpo-lh: 22px;
+  --t-cuerpo-peso: 400;
+  --t-cuerpo-esp: 0;
+  --t-sub-size: 13px;
+  --t-sub-lh: 18px;
+  --t-sub-peso: 400;
+  --t-sub-esp: 0;
+  --t-etiqueta-size: 11px;
+  --t-etiqueta-lh: 14px;
+  --t-etiqueta-peso: 600;
+  --t-etiqueta-esp: 0.12em;
+  --t-numero-xl-size: 44px;
+  --t-numero-xl-lh: 44px;
+  --t-numero-xl-peso: 300;
+  --t-numero-xl-esp: -0.03em;
+  --t-dato-size: 24px;
+  --t-dato-lh: 28px;
+  --t-dato-peso: 600;
+  --t-dato-esp: 0;
+  --t-mono-size: 12px;
+  --t-mono-lh: 16px;
+  --t-mono-peso: 500;
+  --t-mono-esp: 0;
+}
+.titulo-xl{font-family:var(--font-sans);font-size:34px;line-height:38px;font-weight:600;letter-spacing:-0.03em}
+.titulo{font-family:var(--font-sans);font-size:20px;line-height:26px;font-weight:600;letter-spacing:-0.01em}
+.cuerpo{font-family:var(--font-sans);font-size:15px;line-height:22px;font-weight:400}
+.sub{font-family:var(--font-sans);font-size:13px;line-height:18px;font-weight:400}
+.etiqueta{font-family:var(--font-sans);font-size:11px;line-height:14px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase}
+.numero-xl{font-family:var(--font-sans);font-size:44px;line-height:44px;font-weight:300;letter-spacing:-0.03em;font-variant-numeric:tabular-nums}
+.dato{font-family:var(--font-sans);font-size:24px;line-height:28px;font-weight:600;font-variant-numeric:tabular-nums}
+.mono{font-family:var(--font-mono);font-size:12px;line-height:16px;font-weight:500;font-variant-numeric:tabular-nums}

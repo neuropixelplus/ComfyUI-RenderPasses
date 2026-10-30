@@ -1,0 +1,1731 @@
+<!doctype html>
+<html lang="en" data-theme="negro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>RenderPasses</title>
+<!-- RenderPasses · 2D plates → compositing passes for VFX / animation. Stage 1: run a master prompt over a folder of background plates with
+     several engines and compare them side by side. Stage 2: extract compositing passes. Built with the Vidrio UI kit (vidrio/: tokens.css +
+     vidrio.css + vidrio.mjs), always dark. Server: rp_server.py (/renderpasses/*). Engines and their licenses come from the server
+     (GET /renderpasses/prompt), never hard-coded here. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%84%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="vidrio/tokens.css">
+<link rel="stylesheet" href="vidrio/vidrio.css">
+<style>
+  html,body{margin:0;background:var(--fondo)}
+  [hidden]{display:none!important}
+  a{color:var(--acento-texto)}
+  main{position:relative;z-index:1;display:flex;flex-direction:column;gap:var(--e-4);max-width:1880px;margin:0 auto;
+    padding:calc(env(safe-area-inset-top,0px) + 14px) max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 48px) max(16px,env(safe-area-inset-left,0px))}
+  .cab-titulo{margin:var(--e-3) 4px 0;max-width:760px}
+  .cab-titulo p{margin:6px 0 0}
+  .v-yo{flex:0 1 auto;max-width:100%}
+
+  /* ---- ① launch ---- */
+  .lanzar{display:grid;gap:var(--e-5);grid-template-columns:minmax(0,1fr)}
+  @media (min-width:980px){.lanzar{grid-template-columns:minmax(0,1fr) minmax(0,1.25fr)}}
+  .col{display:flex;flex-direction:column;gap:var(--e-4);min-width:0}
+  .campo{display:flex;flex-direction:column;gap:6px;min-width:0}
+  .campo .v-et{display:block}
+  .par{display:grid;grid-template-columns:1fr 1fr;gap:var(--e-3)}
+  .entrada{width:100%;min-height:46px;padding:0 var(--e-4);border:0;border-radius:var(--r-campo);background:var(--hundido);color:var(--tinta);
+    font:15px/1.3 var(--font-sans);box-shadow:inset 0 1px 3px rgba(0,0,0,.7),inset 0 0 0 1px rgba(255,255,255,.1);outline:none;-webkit-appearance:none;appearance:none}
+  .entrada::placeholder{color:var(--tinta-3)}
+  .entrada:focus-visible{box-shadow:inset 0 1px 3px rgba(0,0,0,.7),inset 0 0 0 1px color-mix(in srgb,var(--acento) 60%,transparent),0 0 0 3px color-mix(in srgb,var(--acento) 18%,transparent)}
+  .entrada.mono{font-family:var(--font-mono);font-size:13.5px}
+  select.entrada{padding-right:40px;cursor:pointer;background-image:linear-gradient(45deg,transparent 50%,var(--tinta-2) 50%),linear-gradient(135deg,var(--tinta-2) 50%,transparent 50%);
+    background-position:calc(100% - 22px) 52%,calc(100% - 16px) 52%;background-size:6px 6px;background-repeat:no-repeat;text-overflow:ellipsis}
+  select.entrada option{background:#111216;color:var(--tinta)}
+  .v-pista{width:max-content;max-width:100%}
+
+  .motores{display:flex;flex-direction:column;border-radius:var(--r-campo);background:var(--hundido);box-shadow:inset 0 1px 3px rgba(0,0,0,.6),inset 0 0 0 1px rgba(255,255,255,.06)}
+  .motor{position:relative;display:flex;align-items:center;gap:var(--e-3);padding:var(--e-3) var(--e-4);cursor:pointer}
+  .motor+.motor{border-top:1px solid rgba(255,255,255,.07)}
+  .motor .txt{flex:1;min-width:0}
+  .motor b{display:block;font-weight:600;font-size:15px}
+  .motor .lic{display:block;font-size:12.5px;line-height:17px;color:var(--tinta-2)}
+  .motor .lic.nc{color:var(--aviso)}
+  /* engines in ONE row with their switch; license as tooltip */
+  #motores{flex-direction:row;flex-wrap:wrap;gap:4px;padding:6px}
+  #motores .motor{flex:1 1 auto;padding:6px 8px;gap:8px;border:0;border-radius:10px;justify-content:space-between}
+  #motores .motor+.motor{border-top:0}
+  #motores .motor b{font-size:13.5px;white-space:nowrap}
+  #motores .motor .txt{flex:0 1 auto}
+  /* the liquid switch is the shared v-sw from vidrio.css (lime green) */
+
+  /* the prompt box stretches to the bottom of the column */
+  .lanzar>.col:last-child{min-height:0}
+  #compoPrompt{flex:1;display:flex;flex-direction:column}
+  #compoPrompt .bilingue{flex:1;min-height:0}
+  .v-compo textarea{min-height:200px;resize:vertical;font-size:14.5px;line-height:22px}
+  .v-compo .acciones{flex-wrap:wrap}
+  .v-compo .acciones .der{flex-wrap:wrap}
+  .nota{font-size:12.5px;line-height:18px;color:var(--tinta-2);margin:0}
+  .avisos{display:flex;flex-direction:column;gap:4px;font-size:13px;line-height:19px;color:var(--tinta-2);overflow-wrap:anywhere}
+  .avisos:empty{display:none}
+  .avisos .ok{color:var(--ok)}.avisos .mal{color:var(--error)}.avisos .ojo{color:var(--aviso)}
+  /* install check: engines and passes whose models or nodes are missing are greyed out, with what is missing and where it goes */
+  .falta{opacity:.5;cursor:not-allowed}
+  .falta i,.falta b,.falta span{filter:grayscale(1)}
+  .ficha.falta:hover{background:none;transform:none}
+  .fnota{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:100%;font-size:9.5px;line-height:1.25;
+    color:var(--aviso);text-align:center;overflow-wrap:anywhere;font-style:normal}
+  #motores .motor .fnota{text-align:left;font-size:10.5px;white-space:normal}
+  #motores .motor.falta .txt{display:flex;flex:1 1 0;min-width:0;flex-direction:column;align-items:flex-start;gap:2px}
+  #motores .motor.falta{min-width:0;overflow:hidden}
+  .instal{display:inline-flex;align-items:center;gap:8px;min-height:34px;padding:0 14px;border:0;border-radius:999px;background:var(--hundido);
+    color:var(--tinta-2);font:600 12.5px/1.2 var(--font-sans);cursor:pointer;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
+  .instal i{width:9px;height:9px;border-radius:50%;background:var(--aviso);flex:0 0 auto}
+  .instal.bien{cursor:default}.instal.bien i{background:var(--ok)}
+  .instal.mal i{background:var(--error)}
+  #instalDet{margin:0 4px;padding:var(--e-4);border-radius:var(--r-campo);background:var(--hundido);font-size:13px;line-height:1.5;color:var(--tinta-2);overflow-wrap:anywhere}
+  #instalDet b{color:var(--tinta)}
+  #instalDet ul{margin:4px 0 10px;padding-left:18px}
+  #instalDet code{font-family:var(--font-mono);font-size:12px;color:var(--tinta)}
+
+  /* ---- ③ pass cards (compact: icon + name; details in the tooltip) ---- */
+  .pcab{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .pcab h2{margin:0 auto 0 0;font-size:11px}
+  .pmini{position:relative;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--tinta-2)}
+  .pmini .entrada{min-height:34px;height:34px;padding:0 10px;font-size:13px;width:auto}
+  .pmini input.entrada{width:58px;text-align:center}
+  .pmini select.entrada{min-width:150px;padding-right:30px}
+  .pinfo{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;font:italic 600 12px/1 Georgia,serif;color:var(--tinta-2);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.22);cursor:help;position:relative}
+  .fgrupo{display:flex;flex-direction:column;gap:6px}
+  .criptoGuia{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--tinta-2)}
+  .criptoGuia .entrada{flex:1 1 320px;min-height:34px;height:34px;font-size:13px}
+  #pbgLista:empty{display:none}
+  .fet{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--tinta-3)}
+  .fichas{display:flex;flex-wrap:wrap;gap:6px}
+  .ficha{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;width:84px;padding:8px 4px 7px;border-radius:12px;cursor:pointer;
+    background:rgba(255,255,255,.03);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);transition:background .25s,box-shadow .25s,transform .2s}
+  .ficha:hover{background:rgba(255,255,255,.07);transform:translateY(-1px)}
+  .ficha input{position:absolute;opacity:0;pointer-events:none}
+  .ficha i{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;color:var(--tinta-3);
+    background:radial-gradient(120% 120% at 50% 0%,rgba(255,255,255,.08),rgba(255,255,255,0) 60%),rgba(0,0,0,.35);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),inset 0 -4px 8px rgba(0,0,0,.45);transition:color .3s,box-shadow .3s}
+  .ficha svg{width:22px;height:22px}
+  .ficha span{font-size:11.5px;font-weight:600;color:var(--tinta-3);text-align:center;line-height:1.15;transition:color .25s}
+  .ficha em{font-style:normal;font-size:9.5px;color:var(--tinta-3);line-height:1;opacity:.8}
+  .ficha:has(input:checked){background:rgba(216,255,62,.06);box-shadow:inset 0 0 0 1px rgba(216,255,62,.45),0 0 18px -8px rgba(216,255,62,.6)}
+  .ficha:has(input:checked) i{color:#d8ff3e;box-shadow:inset 0 0 0 1px rgba(216,255,62,.45),inset 0 -4px 8px rgba(0,0,0,.45),0 0 14px -4px rgba(216,255,62,.55)}
+  .ficha:has(input:checked) svg{filter:drop-shadow(0 0 4px rgba(216,255,62,.55))}
+  .ficha:has(input:checked) span{color:#fff}
+  .ficha:has(input:focus-visible){outline:2px solid #d8ff3e;outline-offset:2px}
+  /* glass tooltip (replaces long texts) */
+  [data-tip]:hover::after,[data-tip]:focus-visible::after,.ficha:has(input:focus-visible)::after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 8px);
+    transform:translateX(-50%);width:max-content;max-width:240px;padding:8px 11px;border-radius:10px;z-index:30;pointer-events:none;
+    background:rgba(14,15,20,.95);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);box-shadow:0 8px 24px rgba(0,0,0,.55),inset 0 0 0 1px rgba(255,255,255,.12);
+    font:400 12px/1.45 system-ui,sans-serif;font-style:normal;letter-spacing:0;text-transform:none;color:#e9e9ee;text-align:left;white-space:normal}
+  /* space between the label and the slider */
+  .campo input[type=range]{margin:10px 0 4px}
+
+  /* ---- ① compact ---- */
+  .rutaf{display:flex;align-items:center;gap:6px}
+  .rutaf .entrada{flex:1;min-width:0}
+  .crearP{display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:12px;background:rgba(216,255,62,.04);box-shadow:inset 0 0 0 1px rgba(216,255,62,.18)}
+  .crearP textarea{resize:vertical;min-height:64px;font:inherit}
+  .crearFila{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+  .crearFila .v-btn{margin-left:auto}
+  .crearMinis{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px}
+  .crearMinis img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:8px;background:#000;display:block}
+  .crearMinis .espera{aspect-ratio:16/9;border-radius:8px;background:linear-gradient(90deg,rgba(255,255,255,.04),rgba(255,255,255,.09),rgba(255,255,255,.04));background-size:200% 100%;animation:crearBrillo 1.4s linear infinite}
+  @keyframes crearBrillo{to{background-position:-200% 0}}
+  @media (prefers-reduced-motion:reduce){.crearMinis .espera{animation:none}}
+  .crearVivo{position:relative;border-radius:10px;overflow:hidden;background:#000}
+  .crearVivo img{display:block;width:100%;height:auto}
+  .crearVivo span{position:absolute;left:8px;bottom:8px;padding:2px 8px;border-radius:999px;background:rgba(0,0,0,.6);font-size:11px}
+  .motor .mico{display:inline-grid;place-items:center;width:18px;height:18px;margin-right:6px;vertical-align:-3px;color:var(--sw-lima,#d8ff3e);filter:drop-shadow(0 0 4px rgba(216,255,62,.45))}
+  .motor .mico svg{width:16px;height:16px}
+  /* while dragging, the whole page is the drop zone */
+  .soltar{position:fixed;inset:10px;z-index:90;display:none;place-items:center;border-radius:22px;border:2px dashed var(--sw-lima,#d8ff3e);
+    background:rgba(10,12,8,.72);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);pointer-events:none}
+  body.arrastra .soltar{display:grid}
+  .soltar div{display:flex;flex-direction:column;align-items:center;gap:10px;color:#fff;text-align:center}
+  .soltar svg{width:44px;height:44px;color:var(--sw-lima,#d8ff3e);filter:drop-shadow(0 0 8px rgba(216,255,62,.5))}
+  .soltar b{font:600 20px/1.2 var(--font-titulo,inherit)}
+  .soltar span{font-size:13px;color:rgba(255,255,255,.7)}
+  .rutaf.sobre .entrada{border-color:var(--sw-lima,#d8ff3e)}
+  .fila2{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--e-4);align-items:end}
+  .fila2 .lsw{justify-self:start;padding-bottom:10px}
+  .v-pista button[data-tip]{position:relative}
+  .fila2 .v-pista button{min-width:44px}
+
+  .pcab2{display:flex;align-items:center;gap:8px}
+  .acciones{display:flex;align-items:center;gap:6px}
+  .acciones .der{margin-left:auto;display:flex;align-items:center;gap:14px}
+  .lico svg{width:17px;height:17px}
+  .bilingue textarea{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.2) transparent}
+  .bilingue textarea::-webkit-scrollbar{width:6px}.bilingue textarea::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:6px}
+  .bilingue textarea::-webkit-scrollbar-track{background:transparent}
+
+  /* Output on its own line, switches in a row below it, no truncated text */
+  .fila2:has(#resol){display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px}
+  .fila2:has(#resol) > .campo{flex:1 0 100%}
+  .fila2:has(#resol) .lsw{padding-bottom:0}
+  .lsw span{white-space:nowrap}
+  #motores{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+  #motores .motor{justify-content:flex-start;gap:14px}
+  #motores .motor .txt{flex:0 0 auto;min-width:72px}
+  .bg .h b.conPrompt{position:relative;cursor:help}.bg .h b.conPrompt[data-tip]:hover::after{max-width:560px;width:max-content;left:0;transform:none}
+  .bg .h .pq{font-size:11px;font-weight:600;color:#d8ff3e;opacity:.8;margin-left:6px}
+  #pbg{margin-top:var(--e-4);display:flex;flex-direction:column;gap:10px}
+  .pbgCab{display:flex;align-items:center;gap:10px}.pbgCab b{font-size:13px}.pbgCab .lico{margin-left:auto}
+  .pbgFila{display:grid;grid-template-columns:200px minmax(0,1fr);gap:12px;padding:10px;border-radius:14px;background:rgba(255,255,255,.03);box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+  .pbgFila.fijo{box-shadow:inset 0 0 0 1px rgba(216,255,62,.45)}
+  .pbgFila img{width:200px;border-radius:10px;display:block}
+  .pbgFila .n{font-size:12px;font-weight:600;margin:6px 0 0;overflow-wrap:anywhere}
+  .pbgFila .estado{font-size:11px;color:#d8ff3e}
+  .pbgFila textarea{width:100%;min-height:120px;resize:vertical;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.14);border-radius:10px;color:inherit;font:inherit;font-size:13px;line-height:1.5;padding:8px 10px}
+  .pbgFila details{font-size:11.5px;color:var(--tinta-3);margin-top:6px}.pbgFila details p{margin:4px 0 0;line-height:1.45}
+  .pbgFila .bts{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  @media (max-width:700px){.pbgFila{grid-template-columns:1fr}.pbgFila img{width:100%}}
+  /* ---- ② batch: compact header + color strip ---- */
+  .lsec{display:flex;flex-direction:column;gap:12px}
+  .lcab{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .lcab h2{margin:0 4px 0 0;font-size:11px}
+  .lcab select{flex:1 1 220px;min-width:0;min-height:36px;height:36px;font-size:13.5px}
+  .lacc{display:inline-flex;align-items:center;gap:6px}
+  .lico{position:relative;display:inline-grid;place-items:center;width:34px;height:34px;padding:0;border:0;border-radius:50%;cursor:pointer;text-decoration:none;
+    background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);color:var(--tinta-2);font-size:15px;line-height:1;transition:background .2s,color .2s}
+  .lico:hover,.lico:focus-visible{background:rgba(255,255,255,.1);color:#fff}
+  .lest{position:relative;display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:99px;font-size:12px;cursor:help;
+    background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);color:var(--tinta-2)}
+  .lest i{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+  .lest.va i{background:#d8ff3e;animation:lLate 1.2s ease-in-out infinite}
+  .lest b{font-weight:600;color:#fff}
+  .lest span{font-family:var(--font-mono);font-size:11px;opacity:.75}
+  @keyframes lLate{50%{opacity:.3}}
+  .lriel{display:flex}
+  .lriel .v-riel{height:3px}
+  .ltira{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:6px 8px 6px 6px;border-radius:99px;
+    background:rgba(255,255,255,.03);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}
+  .lsw{position:relative;display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;font-weight:600}
+  .ldet{display:flex;align-items:center;gap:10px;flex:1 1 220px;min-width:0;font-size:12px;color:var(--tinta-2)}
+  .ldet b{font:500 12px var(--font-mono);color:#fff;min-width:38px;text-align:right}
+  .lcrea{margin-top:10px;flex:none}
+  .lcrea[hidden]{display:none}
+  .mosb{font:600 11px var(--font-sans,inherit);padding:2px 8px;margin-left:4px;border-radius:99px;border:0;cursor:pointer;background:rgba(216,242,74,.16);color:#d8f24a}
+  .mosb:hover{background:rgba(216,242,74,.3)}
+  .mosb:disabled{opacity:.45;cursor:default}
+  .ltira .v-btn.chico{min-height:30px;padding:0 14px;font-size:12.5px}
+  .ltira #colorMsg{flex-basis:100%;padding:0 8px 2px;font-size:12px}
+  .ltira #colorMsg:empty{display:none}
+  .lfant{position:relative;height:30px;padding:0 12px;border:0;border-radius:99px;cursor:pointer;font:600 12px/1 inherit;font-family:inherit;color:var(--tinta-2);
+    background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+  .lfant:hover,.lfant:focus-visible{color:#fff;background:rgba(255,255,255,.1)}
+  /* lime slider */
+  input[type=range]{-webkit-appearance:none;appearance:none;flex:1;min-width:80px;height:4px;margin:0;border-radius:4px;cursor:pointer;
+    background:linear-gradient(90deg,#d8ff3e var(--p,60%),rgba(255,255,255,.14) var(--p,60%))}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+    background:radial-gradient(circle at 38% 34%,#fbffe8 0,#ecff9e 35%,#d8ff3e 70%);box-shadow:0 0 10px 1px rgba(216,255,62,.55),0 1px 3px rgba(0,0,0,.6)}
+  input[type=range]::-moz-range-thumb{width:16px;height:16px;border:0;border-radius:50%;background:#d8ff3e;box-shadow:0 0 10px 1px rgba(216,255,62,.55)}
+
+  /* ---- ② batches ---- */
+  /* batch cards with thumbnail, name and path */
+  .lgal{display:flex;gap:10px;overflow-x:auto;padding:2px 2px 10px;margin-top:var(--e-3);scrollbar-width:thin}
+  .lcard{flex:0 0 176px;display:flex;flex-direction:column;gap:5px;padding:6px;border:0;border-radius:14px;background:rgba(255,255,255,.04);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);color:inherit;text-align:left;cursor:pointer;font:inherit}
+  .lcard:hover{background:rgba(255,255,255,.07)}
+  .lcard[aria-pressed=true]{box-shadow:inset 0 0 0 1.5px var(--sw-lima,#d8ff3e);background:rgba(216,255,62,.06)}
+  .lcard img,.lcard .sinmini{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:9px;background:#14161c}
+  .lcard b{font-size:12.5px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lcard span{font-size:11px;line-height:1.3;color:var(--tinta-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lcard .ok{color:var(--sw-lima,#d8ff3e)}
+  .lotes-cab{display:flex;align-items:flex-end;gap:var(--e-3);flex-wrap:wrap}
+  .lotes-cab .campo{flex:1 1 280px}
+  .v-avance .v-ruta{font-size:20px}
+  .salida{font:12px/1.5 var(--font-mono);color:var(--tinta-3);overflow-wrap:anywhere;margin-top:var(--e-2)}
+  .enlaces{display:flex;gap:var(--e-2);flex-wrap:wrap}
+  a.v-btn{text-decoration:none}
+
+  .bgs{display:flex;flex-direction:column;gap:var(--e-6)}
+  .bg .h{display:flex;align-items:center;justify-content:space-between;gap:var(--e-3);margin:0 2px var(--e-3);flex-wrap:wrap}
+  .bg .h b{font-size:15px;font-weight:600;overflow-wrap:anywhere;min-width:0}
+  .rejilla{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,140px),1fr));gap:var(--e-3)}
+  @media (min-width:700px){.rejilla{grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))}}   /* batch images fill the width */
+  @media (min-width:700px){#pRes .rejilla{grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}}   /* passes (many) in an even grid */
+  .cuadro{position:relative;margin:0;border-radius:var(--r-campo);overflow:hidden;background:#000;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+  .cuadro button{display:block;width:100%;padding:0;border:0;background:none;cursor:zoom-in}
+  .cuadro img{display:block;width:100%;height:auto;min-height:60px;background:#000}
+  .cuadro.alfa img{background:repeating-conic-gradient(#2a2d35 0 25%,#1a1c22 0 50%) 0 0/16px 16px}   /* RGBA layers over a checkerboard */
+  /* bilingual prompt: Spanish | English; "Expand" makes it full-screen */
+  .bilingue{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  /* each language in its own box */
+  .bilingue .panel{display:flex;flex-direction:column;gap:6px;min-width:0;padding:10px 12px;border-radius:14px;
+    background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.16)}
+  .bilingue .panel.en{background:rgba(216,255,62,.045);border-color:rgba(216,255,62,.28)}
+  .bilingue textarea{min-height:230px;flex:1;background:transparent;border:0;outline:none;resize:vertical;color:inherit;font:inherit;line-height:1.5}
+  .bilingue .panel:focus-within{border-color:rgba(255,255,255,.4)}.bilingue .panel.en:focus-within{border-color:rgba(216,255,62,.6)}
+  @media (max-width:700px){.bilingue{grid-template-columns:1fr}}
+  #compoPrompt.grande{position:fixed;inset:24px;z-index:60;display:flex;flex-direction:column;background:rgba(10,11,16,.97);padding:16px;border-radius:18px}
+  #compoPrompt.grande .bilingue{flex:1}#compoPrompt.grande textarea{min-height:0;height:100%;font-size:16px;line-height:1.55}
+  /* small 4K chip in the bottom-right corner */
+  .cuadro .bchips{position:absolute;right:6px;bottom:6px;display:flex;gap:4px}
+  .cuadro .b4k{position:relative;width:auto;display:inline-flex;align-items:center;height:20px;padding:0 7px;border:0;border-radius:99px;cursor:pointer;
+    background:rgba(0,0,0,.6);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:#fff;font:600 10.5px/1 var(--font-texto,inherit);letter-spacing:.04em;text-decoration:none;opacity:.8}
+  .cuadro .b4k:hover,.cuadro .b4k:focus-visible{opacity:1;background:rgba(0,0,0,.82)}
+  .cuadro a.b4k{color:var(--acento-texto)}
+  .cuadro button:focus-visible{outline:2px solid var(--acento-texto);outline-offset:-2px;border-radius:var(--r-campo)}
+  .cuadro figcaption{position:absolute;left:8px;top:8px;padding:4px 9px;border-radius:var(--r-capsula);background:rgba(0,0,0,.62);
+    -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:#fff;font-size:11px;line-height:14px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;pointer-events:none}
+  .cuadro.orig figcaption{background:color-mix(in srgb,var(--acento) 85%,#000);color:var(--en-acento)}
+  .cola{display:grid;place-items:center;aspect-ratio:16/9;background:var(--hundido);color:var(--tinta-2);font-size:13px;text-align:center;padding:var(--e-3)}
+  .cola span{display:inline-flex;align-items:center;gap:8px}
+  .cola span::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--aviso);box-shadow:0 0 10px var(--aviso);animation:late 1.4s ease-in-out infinite}
+  @keyframes late{50%{opacity:.25}}
+  .vacio{padding:var(--e-5);border-radius:var(--r-campo);background:var(--hundido);color:var(--tinta-2);text-align:center;font-size:14px}
+
+  /* ---- full-screen viewer: never tinted ---- */
+  /* parallax viewer: stacked planes, each one moves according to its distance */
+  .plx{position:fixed;inset:0;z-index:85;display:grid;place-items:center;background:rgba(0,0,0,.9);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+  .plx[hidden]{display:none}
+  .plx .caja{position:relative;width:min(92vw,calc(78vh * var(--ar,2.37)));aspect-ratio:var(--ar,2.37);overflow:hidden;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  .plx .caja img{position:absolute;inset:-6%;width:112%;height:112%;object-fit:cover;will-change:transform;pointer-events:none}
+  .plx .pie{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:999px;
+    background:rgba(14,15,20,.8);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);color:#fff;font-size:12.5px;white-space:nowrap}
+  .plx .pie input[type=range]{accent-color:var(--sw-lima,#d8ff3e);width:110px}
+  .visor{position:fixed;inset:0;z-index:80;display:flex;flex-direction:column;gap:var(--e-3);
+    padding:calc(env(safe-area-inset-top,0px) + 12px) max(12px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 12px) max(12px,env(safe-area-inset-left,0px));
+    background:rgba(0,0,0,.94);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
+  .visor .arriba{display:flex;align-items:center;gap:var(--e-2)}
+  .visor .arriba .t{flex:1;min-width:0}
+  .visor .arriba .t b{display:block;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .escenario{flex:1;min-height:0;display:grid;place-items:center;container-type:size}
+  .lienzo{position:relative;aspect-ratio:var(--ar,16/9);width:min(100cqw,calc(100cqh * var(--ar-n,1.7778)));max-height:100cqh;touch-action:none;user-select:none;-webkit-user-select:none}
+  /* comparer zoom: each image sits in its own layer (clips what overflows when zoomed in) and both move together:
+     wheel = zoom towards the mouse, drag = pan, double-click = fit. The wipe stays where it is on screen. */
+  .lienzo{overflow:hidden}
+  .lienzo .capa{position:absolute;inset:0;overflow:hidden}
+  .lienzo img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;-webkit-user-drag:none;
+    transform:translate(calc(var(--tx,0) * 100%),calc(var(--ty,0) * 100%)) scale(var(--z,1));transform-origin:0 0}
+  .lienzo.zoom img{image-rendering:auto}
+  .lienzo .arriba-img{clip-path:inset(0 calc(100% - var(--x,50%)) 0 0)}
+  .zoomtxt{position:absolute;bottom:10px;right:10px;padding:3px 9px;border-radius:var(--r-capsula);background:rgba(0,0,0,.62);color:#fff;font:600 11px var(--font-mono,monospace);pointer-events:none}
+  .lienzo:not(.zoom) .zoomtxt{display:none}
+  .corte{position:absolute;top:0;bottom:0;left:var(--x,50%);width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 12px rgba(0,0,0,.8);cursor:ew-resize}
+  .corte::after{content:"⟷";position:absolute;top:50%;left:50%;width:40px;height:40px;margin:-20px 0 0 -20px;border-radius:50%;display:grid;place-items:center;
+    background:rgba(255,255,255,.92);color:#111;font-size:18px;box-shadow:0 4px 14px rgba(0,0,0,.6)}
+  .rotulo{position:absolute;top:10px;padding:4px 10px;border-radius:var(--r-capsula);background:rgba(0,0,0,.62);color:#fff;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;pointer-events:none}
+  .rotulo.izq{left:10px}.rotulo.der{right:10px}
+  .lienzo:not(.ab) .corte,.lienzo:not(.ab) .arriba-img,.lienzo:not(.ab) .rotulo.izq{display:none}
+  .lienzo{cursor:ew-resize}.lienzo:not(.ab),.lienzo.lado{cursor:default}.lienzo.zoom{cursor:grab}.lienzo.zoom.paneo{cursor:grabbing}
+  /* side by side: the canvas is twice as wide; original on the left, engine on the right */
+  .lienzo.lado .capa{width:calc(50% - 4px)}.lienzo.lado .arriba-img{clip-path:none;left:0;right:auto}.lienzo.lado .capa-b{left:auto;right:0}
+  .lienzo.lado .corte{display:none}
+  .mandos{display:flex;align-items:center;gap:var(--e-3);padding:8px;flex-wrap:wrap;justify-content:center;margin:0 auto;max-width:100%}
+  .mandos .v-pista{background:rgba(0,0,0,.4)}
+  .mandos .v-pista>button{color:rgba(255,255,255,.75)}
+  .mandos .v-pista>button[aria-pressed="true"]{color:#fff}
+  .mandos label{display:flex;align-items:center;gap:var(--e-2);font-size:13.5px;cursor:pointer;white-space:nowrap}
+  .ayuda{text-align:center;font-size:12px;color:rgba(255,255,255,.6)}
+  @media (max-width:640px){.ayuda{display:none}}
+  body.con-visor{overflow:hidden}
+</style>
+</head>
+<body class="v-app">
+<div class="v-fondo" id="fondo"></div>
+<main>
+  <header class="v-cab">
+    <div class="v-yo v-placa" style="padding:5px 16px 5px 5px"><span class="logo" aria-hidden="true" style="font-size:23px;line-height:1">🌄</span><div><span class="v-sub">open source · for ComfyUI</span><b>RenderPasses <small style="opacity:.6;font-weight:500">experimental</small></b></div></div>
+    <button type="button" class="instal" id="instal" hidden aria-expanded="false" aria-controls="instalDet"><i></i><span id="instalTxt">Install check…</span></button>
+  </header>
+  <!-- install check (GET /renderpasses/requisitos): what is missing for each engine and pass, and the ComfyUI folder each file goes in -->
+  <div id="instalDet" hidden></div>
+  <div class="cab-titulo"><h1 class="v-titulo-xl" id="t1">RenderPasses</h1></div>
+
+  <!-- ① launch a comparison -->
+  <section class="v-placa" aria-labelledby="t1">
+    <div class="lanzar">
+      <!-- Left: images (path + icons), how many + seed in one row, engines grid. Right: the full-height prompt; Save / Default / Expand
+           as icons and "4K" next to Render. -->
+      <div class="col">
+        <div class="campo"><label class="v-et" for="carpeta">Images</label>
+          <div class="rutaf"><input class="entrada mono" id="carpeta" type="text" placeholder="Folder path, or drop images here" autocomplete="off" spellcheck="false">
+            <button type="button" class="lico" id="verCarpeta" data-tip="Browse and pick images from the folder" aria-label="Browse and pick images from the folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="M8 15l2.5-2.5 2 2 1.5-1.5 2 2"/></svg></button>
+            <button type="button" class="lico" id="subirBtn" data-tip="Upload images (or drop them anywhere on the page)" aria-label="Upload images"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7.5 8.5 12 4l4.5 4.5"/><path d="M4.5 15v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/></svg></button>
+            <button type="button" class="lico" id="crearBtn" data-tip="Create plates from a prompt with Krea 2 (no image needed)" aria-label="Create plates with Krea 2" aria-expanded="false" aria-controls="crearPanel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9z"/><path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg></button></div>
+          <input type="file" id="subirArch" accept="image/png,image/jpeg,image/webp,image/tiff" multiple hidden>
+          <div class="crearP" id="crearPanel" hidden>
+            <label class="v-et" for="crearPrompt">Create plates · Krea 2</label>
+            <textarea class="entrada" id="crearPrompt" rows="3" placeholder="Describe the background plate: place, time of day, light, depth from foreground to far background…"></textarea>
+            <div class="crearFila">
+              <div class="v-pista" id="crearFormato" role="group" aria-label="Aspect ratio"><button type="button" value="16:9" aria-pressed="true">16:9</button><button type="button" value="21:9" aria-pressed="false">21:9</button><button type="button" value="3:2" aria-pressed="false">3:2</button><button type="button" value="1:1" aria-pressed="false">1:1</button><button type="button" value="9:16" aria-pressed="false">9:16</button></div>
+              <div class="v-pista" id="crearN" role="group" aria-label="How many"><button type="button" value="1" aria-pressed="false">1</button><button type="button" value="2" aria-pressed="true">2</button><button type="button" value="4" aria-pressed="false">4</button></div>
+              <button type="button" class="v-btn chico pri" id="crearGo" data-tip="Krea 2 Turbo, ComfyUI's official recipe (8 steps). All plates are one batch and you watch them form together, live. The new plates are loaded and selected as if you had uploaded them">Create</button>
+            </div>
+            <div class="crearVivo" id="crearVivo" hidden><img id="crearVivoImg" alt="Live preview of the plates being created"><span id="crearVivoPaso"></span></div>
+            <div class="crearMinis" id="crearMinis"></div>
+            <span class="v-sub" id="crearMsg" aria-live="polite"></span>
+          </div>
+          <span class="v-sub" id="elegidasN"></span></div>
+        <div class="fila2">
+          <div class="campo"><span class="v-et" id="tCu">How many</span><input type="hidden" id="limite" value="3">
+            <div class="v-pista" id="probar" role="group" aria-labelledby="tCu"><button type="button" value="1" aria-pressed="false">1</button><button type="button" value="3" aria-pressed="true">3</button><button type="button" value="5" aria-pressed="false">5</button><button type="button" value="0" aria-pressed="false">All</button></div></div>
+          <div class="campo"><label class="v-et" for="semilla">Seed</label><input class="entrada" id="semilla" type="text" inputmode="numeric" placeholder="random"></div>
+        </div>
+        <div class="fila2">
+          <div class="campo"><span class="v-et" id="tRes">Output</span>
+            <div class="v-pista" id="resol" role="group" aria-labelledby="tRes"><button type="button" value="nativa" aria-pressed="false" data-tip="Whatever each engine outputs (Fibo ~1 MP, Krea ~2 MP, Klein up to 4 MP)">Native</button><button type="button" value="2k" aria-pressed="false" data-tip="Long side 2048 px, original aspect ratio">2K</button><button type="button" value="original" aria-pressed="true" data-tip="Same size as the original background plate: color blend and passes line up pixel for pixel">Original</button></div></div>
+          <label class="lsw" data-tip="Experimental: Fibo 2 renders directly at the target resolution. At 2.4 MP it erased plants and clouds from the plate: outside its ~1 MP it loses the scene. Off (recommended): Fibo at ~1 MP, then SeedVR2 upscales."><input type="checkbox" class="v-sw" id="fiboDirecto"><span>Fibo direct</span></label>
+          <label class="lsw" data-tip="The background plate is downscaled to 2K (long side 2048, no AI) and that becomes the batch original: engines, comparison, Keep original color and passes all work on it. 4K is separate, at the end, with the “4K” switch. Off: the plate at full size."><input type="checkbox" class="v-sw" id="base2k" checked><span>2K base</span></label>
+          <label class="lsw" data-tip="Qwen looks at each plate and writes ITS own prompt: what to keep and what to refine, based only on what is visible (with a generic prompt, Fibo either invents or barely improves). Off: the master prompt on the right for all plates."><input type="checkbox" class="v-sw" id="promptQwen" checked><span>Per-plate prompt</span></label>
+          <button type="button" class="lfant" id="verPbg" data-tip="Qwen writes the prompt for each selected image WITHOUT rendering; review it, edit it and pin it so it does not change">✦ Show prompts</button>
+        </div>
+        <div class="campo"><span class="v-et" id="tMot">Engines</span>
+          <div class="motores" id="motores" role="group" aria-labelledby="tMot"><div class="motor"><span class="txt v-sub">Loading engines…</span></div></div>
+          <label class="ldet lcrea" for="creaMoss" id="creaCaja" hidden data-tip="MOSS · depth + color only. 0 = fidelity: keeps the framing, shapes and regions of the original for the whole sampling. Higher = MOSS lets go of the control earlier and stops seeing the color map: it invents small details (plants, windows, ornaments). AI passes always use 0."><span>MOSS creativity</span><input id="creaMoss" type="range" min="0" max="100" step="5" value="30"><b><span id="creaMossN">30</span> %</b></label></div>
+      </div>
+      <div class="col">
+        <div class="pcab2"><label class="v-et" for="prompt">Master prompt</label>
+          <span class="pinfo" tabindex="0" data-tip="Write in English, or in Spanish on the left and it is translated automatically. The models always receive the English text.">i</span></div>
+        <div class="v-compo" id="compoPrompt">
+          <div class="bilingue">
+            <div class="panel"><span class="v-et">Español · optional</span><textarea id="promptEs" spellcheck="true" placeholder="Optional: write in Spanish and it is translated to English…"></textarea></div>
+            <div class="panel en"><span class="v-et">English · sent to the models <span id="trEstado" class="v-sub"></span></span><textarea id="prompt" spellcheck="true" placeholder="Loading…"></textarea></div>
+          </div>
+          <div class="acciones">
+            <button type="button" class="lico" id="guardar" data-tip="Save prompt" aria-label="Save prompt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5h11l3 3v11a1.5 1.5 0 0 1-1.5 1.5h-12A1.5 1.5 0 0 1 4 18.5v-12.5A1.5 1.5 0 0 1 5 4.5z"/><path d="M8 4.5v4h7v-4M8 20v-6h8v6"/></svg></button>
+            <button type="button" class="lico" id="defecto" data-tip="Reset to the default prompt" aria-label="Reset to the default prompt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4h4"/></svg></button>
+            <button type="button" class="lico" id="ampliar" data-tip="Expand both panels (Esc closes)" aria-label="Expand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+            <div class="der"><label class="lsw" data-tip="Upscale to cinema 4K (long side 4096) at the end with SeedVR2, from the 2K base; saved separately in ‹engine›_4k"><input type="checkbox" class="v-sw" id="escalar4k"><span>4K</span></label>
+              <button type="button" class="v-btn chico pri" id="lanzar" data-tip="Each engine at its own size (Fibo ~1 MP, Krea ~2 MP, Klein up to 4 MP). With Output “Original” or “2K” it is resized to the exact size: SeedVR2 only when upscaling more than ×1.5 (it also hallucinates), otherwise Lanczos. “Native” = the engine output as is, unscaled.">Render</button></div>
+          </div>
+        </div>
+        <div class="avisos" id="avisos" aria-live="polite"></div>
+      </div>
+    </div>
+    <!-- per-plate prompts: each plate with its editable prompt; "Pin" saves it (by file name and size) and "Render" uses it without
+         asking Qwen again. -->
+    <div id="pbg" hidden>
+      <div class="pbgCab"><b>✦ Per-plate prompts</b><span class="v-sub" id="pbgMsg"></span>
+        <button type="button" class="lico" id="pbgCerrar" data-tip="Close" aria-label="Close">✕</button></div>
+      <div id="pbgLista"></div>
+    </div>
+    <div id="selector" hidden style="margin-top:var(--e-4)">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button type="button" class="v-btn chico" id="selTop">Select first <span id="selTopN">10</span></button>
+        <button type="button" class="v-btn chico" id="selTodas">Select all</button>
+        <button type="button" class="v-btn chico" id="selNinguna">None</button>
+      </div>
+      <div class="v-sub" id="selMsg" style="margin:6px 2px"></div>
+      <div id="rejillaSel" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;max-height:520px;overflow:auto;padding:2px"></div>
+    </div>
+  </section>
+
+  <!-- ② batches: ONE header (batch · status · actions) + a color strip + the plates. -->
+  <section class="v-placa lsec" aria-labelledby="t2">
+    <div class="lcab">
+      <h2 class="v-et" id="t2">② Batch</h2>
+      <select class="entrada" id="lotes" aria-labelledby="t2"></select>
+      <span class="lest" id="avEstado" tabindex="0" hidden><i></i><b id="avTxt">Done</b><span id="avCuenta"></span></span>
+      <button type="button" class="lico" id="loteNom" data-tip="Name this batch (e.g. “parallax tests SH190”)" aria-label="Name batch">✎</button>
+      <button type="button" class="lico" id="loteRuta" data-tip="Copy the batch folder path" aria-label="Copy path">⧉</button>
+      <button type="button" class="lico" id="refrescar" data-tip="Refresh" aria-label="Refresh">↻</button>
+      <span class="lacc" id="enlaces"></span>
+    </div>
+    <div class="lgal" id="loteGal" role="group" aria-label="Batches"></div>
+    <div class="lriel" id="avance" hidden><span class="v-riel"><i></i></span></div>
+    <div class="ltira" id="colorCaja" hidden>
+      <label class="lsw" data-tip="Takes light, color and large shapes from the ORIGINAL and only the fine detail from the AI. Applied to the batch without re-rendering."><input type="checkbox" class="v-sw" id="colorOn"><span>Keep original color</span></label>
+      <label class="ldet" for="colorDet"><span>AI detail</span><input id="colorDet" type="range" min="0" max="100" step="5" value="60"><b><span id="colorDetN">60</span> %</b></label>
+      <button type="button" class="v-btn chico" id="colorAplicar">Apply</button>
+      <span class="v-sub" id="colorMsg"></span>
+    </div>
+    <div class="bgs" id="res"></div>
+  </section>
+
+  <!-- ③ compositing passes and layers (stage 2) on the winning engine -->
+  <section class="v-placa" aria-labelledby="t3" style="display:flex;flex-direction:column;gap:var(--e-4)">
+    <!-- each pass is a card with an icon that LOOKS like the pass (depth = gradient, normals = colored sphere, mattes = white on
+         black…), lit in lime when on. How it is made and its license go in the tooltip. -->
+    <div class="pcab">
+      <h2 class="v-et" id="t3">③ Passes</h2>
+      <label class="pmini" data-tip="Which engine output (from the batch selected in ②) to extract passes from"><span>from</span><select class="entrada" id="pMotor"></select></label>
+      <label class="pmini" data-tip="How many layers Stable-Layers and RGBA Layers produce"><span>layers</span><input class="entrada" id="pCapas" type="number" min="2" max="8" value="4" inputmode="numeric"></label>
+      <span class="pinfo" tabindex="0" data-tip="These are estimates from a 2D image, not render AOVs: raw lighting contains key and GI together; fog is derived from depth.">i</span>
+      <button type="button" class="v-btn chico" id="pCancelar" data-tip="Stops what is running and removes THIS batch's jobs from the queue (other batches are untouched)">Cancel</button>
+      <button type="button" class="v-btn chico pri" id="pLanzar">Extract passes</button>
+    </div>
+    <div class="fgrupo"><span class="fet">Data</span><div class="fichas" id="pPases" role="group" aria-label="Data passes"></div></div>
+    <label class="criptoGuia"><span>Cryptomatte (auto) · what to separate in this shot (optional)</span>
+      <input class="entrada" id="pCripto" type="text" placeholder="e.g. iguana, cover, sky, plants, eyes — empty: Qwen decides" autocomplete="off"></label>
+    <div class="fgrupo"><span class="fet">AI · Klein 3 + MOSS</span><div class="fichas" id="pIAlista" role="group" aria-label="AI passes"></div></div>
+    <div class="v-sub" id="pEstado"></div>
+    <div class="bgs" id="pRes"></div>
+    <input type="file" id="psdArch" accept=".psd,.psb,.png,.tif,.tiff,.json" multiple hidden>
+  </section>
+  <p class="nota" style="margin:0 4px">Each engine has its own license, and it matters for commercial work. Check it before using an output.</p>
+</main>
+
+<!-- viewer -->
+<div class="visor" id="visor" hidden role="dialog" aria-modal="true" aria-labelledby="vNombre">
+  <div class="arriba">
+    <button type="button" class="v-btn r chico" id="vAnt" aria-label="Previous plate">‹</button>
+    <div class="t"><span class="v-sub" id="vCuenta" style="color:rgba(255,255,255,.65)"></span><b id="vNombre"></b></div>
+    <button type="button" class="v-btn r chico" id="vSig" aria-label="Next plate">›</button>
+    <button type="button" class="v-btn r chico" id="vCerrar" aria-label="Close">✕</button>
+  </div>
+  <div class="escenario"><div class="lienzo" id="lienzo">
+    <div class="capa capa-b"><img id="vAbajo" alt=""></div><div class="capa arriba-img"><img id="vArriba" alt=""></div>
+    <div class="corte" id="corte"></div>
+    <span class="rotulo izq">Original</span><span class="rotulo der" id="vRotulo"></span><span class="zoomtxt" id="vZoom"></span>
+  </div></div>
+  <div class="mandos v-lente">
+    <div class="v-pista" id="vMotores"></div>
+    <label><input type="checkbox" class="v-sw" id="vAB"> A/B with original</label>
+    <div class="v-pista" id="vModo" role="group" aria-label="Mode"><button type="button" value="cortina" aria-pressed="true">Wipe</button><button type="button" value="lado" aria-pressed="false">Side by side</button></div>
+  </div>
+  <div class="ayuda">← → engine · ↑ ↓ plate · C compare · wheel = zoom · drag = pan · double-click = fit · Esc close</div>
+</div>
+
+<script type="module">
+import V from "./vidrio/vidrio.mjs";
+V.iniciar();
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } };
+let MOT = {}, LIC = {}, defecto = "", reloj = null, E = null, firma = "", LOTES = [], CAP = {};
+
+async function j(u, cuerpo) {
+  const r = await fetch(u, cuerpo ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) } : { cache: "no-store" });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || (d && d.error)) throw new Error((d && d.error) || ("server responded " + r.status));
+  return d;
+}
+// Display-only English for Spanish text the server may send (engine names, pass keys, statuses). Keys and ids are never changed.
+const EN_UI = [[/MOSS · profundidad \+ color/g, "MOSS · depth + color"], [/MOSS · profundidad/g, "MOSS · depth"], [/^capa Stable (\d+)/, "Stable layer $1"], [/^capa (\d+)/, "Layer $1"], [/^Objeto · /, "Object · "],
+  [/^Fondo limpio \(sin objetos\)$/, "Clean plate (no objects)"], [/^Mate · /, "Matte · "], [/^Paralaje · plano (\d+)/, "Parallax · plane $1"], [/^IA /, "AI "],
+  [/Arcilla · misma luz/, "Clay · same light"], [/Relleno \/ GI/, "Fill / GI"], [/Oclusión/, "Occlusion"], [/SSS \(prueba · Fibo da más bien contraluz\)/, "SSS (experimental)"],
+  [/Mate personajes y props/, "Characters & props matte"], [/Mate plantas/, "Plants matte"], [/Sombras · quitando las sombras/, "Shadows · via shadow removal"],
+  [/Sombras \(nítidas\)/, "Shadows (sharp)"], [/Sombras \(beauty ÷ sin sombras\)/, "Shadows (beauty ÷ shadow-free)"], [/Especular · solo brillos/, "Specular · highlights only"],
+  [/Reflejos del suelo/, "Ground reflections"], [/\bReflejos\b/, "Reflections"], [/\bBrillos\b/, "Highlights"],
+  [/Emisión · color del original/, "Emission · original color"], [/Emisión/, "Emission"], [/Especular/, "Specular"],
+  [/\bCielo\b/, "Sky"], [/\bAgua\b/, "Water"], [/\bArena\b/, "Sand"], [/\bPiedra\b/, "Rock"], [/\bMadera\b/, "Wood"],
+  [/contraluz por la derecha/, "backlit from the right"], [/contraluz por la izquierda/, "backlit from the left"], [/desde la derecha/, "from the right"],
+  [/desde la izquierda/, "from the left"], [/de frente/, "frontal"],
+  [/\bfrente\b/g, "front"], [/\bmedio\b/g, "mid"], [/\blejos\b/g, "far"], [/\bfondo\b/g, "background"], [/^en cola…$/, "queued…"],
+  [/^listo\b/, "done"], [/^trabajando/, "working"], [/^en marcha/, "running"]];
+const enUI = (s) => EN_UI.reduce((t, [a, b]) => t.replace(a, b), String(s ?? ""));
+// "<engine>@4k" = the 4K/8K version of that engine's output (shown in the comparer next to the 2K one); "moss_prof_4k" = the tiled
+// MOSS 4K/8K output used as a pass source in ③
+const nombreMotor = (m) => (m === "original" ? "Original" : /(@4k|_4k)$/.test(m) && !MOT[m] ? enUI(MOT[m.slice(0, -3)] || m.slice(0, -3)) + " · 4K" : enUI(MOT[m] || m));
+const fechaLote = (l) => { const m = /^(\d{4})(\d\d)(\d\d)_(\d\d)(\d\d)/.exec(l || ""); return m ? `${m[3]}/${m[2]} ${m[4]}:${m[5]}` : l; };
+const MOTORES_DEF = ["klein3", "krea2v2", "fibo2"];   // default engines: the three that best respected the plate in tests (Krea 2 changed the framing)
+const intensidad = () => "normal";   // "fuerte" (strong) made Fibo invent rocks and change the light; blending with the original is done in ② (Keep original color)
+const elegidos = () => [...document.querySelectorAll("#motores input:checked")].map((x) => x.value);
+function avisos(lineas) { $("#avisos").innerHTML = lineas.map(([cls, t]) => `<div class="${cls}">${esc(t)}</div>`).join(""); }
+
+// ---- ① ----
+async function inicio() {
+  $("#carpeta").value = ls("bglook.carpeta") || "";
+  try {
+    const p = await j("/renderpasses/prompt");
+    $("#prompt").value = p.prompt || ""; defecto = p.defecto || ""; MOT = p.motores || {}; LIC = p.licencias || {}; CAP = p.capacidades || {};
+    traduceA("es");
+    // one card per AI pass (so a single one can be run). Beauty HDR only if this installation has the LTX module.
+    $("#pPases").innerHTML = PASES_DATOS.filter(([k]) => k !== "hdr" || CAP.hdr_ltx).map(([k, on]) => ficha(k, on)).join("");
+    $("#pIAlista").innerHTML = Object.entries(p.pases_ia || {}).map(([k, v]) => ficha(k, true, v.motores)).join("");
+    $("#motores").innerHTML = Object.keys(MOT).map((id) => { const l = LIC[id] || ""; const nc = /no comercial|non-?commercial|\bNC\b/i.test(l);
+      // MOSS free (may change the framing) and MOSS with depth (keeps it), each with its own icon
+      const ic = { moss: ['<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.6L18.5 9l-4.7 1.6L12 15l-1.8-4.4L5.5 9l4.7-1.4z"/><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>', "Free: reinvents with more detail, but may change the framing"],
+        moss_prof: ['<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l9 4 9-4"/><path d="M3 12.5l9 4 9-4" opacity=".7"/><path d="M3 8l9-4 9 4-9 4z"/></svg>', "With depth (MoGe) and the original color: keeps the framing and adds detail"] }[id];
+      return `<label class="motor" data-tip="${esc((ic ? ic[1] + " · " : "") + "License: " + (l || "not specified"))}"><span class="txt">${ic ? `<i class="mico">${ic[0]}</i>` : ""}<b>${esc(enUI(MOT[id]))}</b></span>
+        <input type="checkbox" class="v-sw" value="${esc(id)}"${MOTORES_DEF.includes(id) ? " checked" : ""} aria-label="${esc(enUI(MOT[id]) + " · license: " + (l || "not specified"))}"></label>`; }).join("")
+      || '<div class="motor"><span class="txt v-sub">The server returned no engines.</span></div>';
+  } catch (e) {
+    $("#prompt").placeholder = "";
+    $("#motores").innerHTML = '<div class="motor"><span class="txt v-sub">No engines.</span></div>';
+    avisos([["mal", "The RenderPasses server is not responding (" + e.message + "). Restart ComfyUI."]]);
+  }
+  await requisitos();
+  listo();
+  await lotes();
+}
+
+// ---- install check: engines and pass cards whose models or nodes are missing are greyed out (unchecked, disabled) with a note of
+// what is missing and the ComfyUI folder it goes in; a summary sits at the top. Optional extras never block (they only add a note).
+const faltanTxt = (r) => [...(r.faltan_modelos || []).map((m) => `${m.carpeta}/${m.archivo}${(m.alternativas || []).length ? " (or " + m.alternativas.join(", ") + ")" : ""}`),
+  ...(r.faltan_nodos || []).map((n) => "node " + n), ...(r.faltan_paquetes || []).map((n) => "pip " + n)];
+function marcaFalta(label, r) {
+  const inp = label.querySelector("input"); if (!inp || !r || r.ok) return;
+  const f = faltanTxt(r), inst = (r.instalar || []).length ? " · install: " + r.instalar.join(", ") : "";
+  inp.checked = false; inp.disabled = true; label.classList.add("falta");
+  label.dataset.tip = "Not available: missing " + f.join(" · ") + inst + ((r.notas || []).length ? " · " + r.notas.join(" · ") : "");
+  (label.querySelector(".txt") || label).insertAdjacentHTML("beforeend", `<small class="fnota">missing: ${esc(f.join(", "))}</small>`);
+}
+async function requisitos() {
+  let R;
+  try { R = await j("/renderpasses/requisitos"); } catch (e) { return; }   // older server: nothing is greyed out
+  const nom = (k) => (MOT[k] ? enUI(MOT[k]) : (FICHA[k] || [k])[0]);
+  document.querySelectorAll("#motores label.motor").forEach((l) => marcaFalta(l, R.motores[l.querySelector("input")?.value]));
+  document.querySelectorAll("#pPases label.ficha, #pIAlista label.ficha").forEach((l) => {
+    const k = l.querySelector("input")?.value, r = R.pases[k];
+    if (r && r.ok && (r.notas || []).length) l.dataset.tip += " · " + r.notas.join(" · ");   // e.g. depth from MoGe, optional extras
+    marcaFalta(l, r);
+  });
+  if (!R.extra?.escalar4k?.ok) { const x = $("#escalar4k"); x.checked = false; x.disabled = true; x.closest("label").classList.add("falta");
+    x.closest("label").dataset.tip = "Not available: missing " + faltanTxt(R.extra.escalar4k).join(" · "); }
+  if (R.extra?.crear && !R.extra.crear.ok) { const c = $("#crearBtn"); c.classList.add("falta");
+    c.dataset.tip = "Create needs Krea 2 (huggingface.co/Comfy-Org/Krea-2): missing " + faltanTxt(R.extra.crear).join(" · "); $("#crearGo").disabled = true; }
+  const no = [...R.resumen.motores_no.map((k) => ["engine", k, R.motores[k]]), ...R.resumen.pases_no.map((k) => ["pass", k, R.pases[k]])];
+  const b = $("#instal"); b.hidden = false;
+  b.classList.toggle("bien", !no.length); b.classList.toggle("mal", R.resumen.motores_no.length === Object.keys(R.motores).length);
+  $("#instalTxt").textContent = no.length ? `${no.length} engine${no.length === 1 ? "" : "s"}/passes unavailable — see missing models` : "Install check: everything is installed";
+  const avisoNodos = R.nodos_comprobados ? "" : "<p>Node classes could not be checked (ComfyUI's node list was not readable).</p>";
+  const notas = Object.entries({ ...R.pases, ...R.extra }).filter(([k, r]) => r.ok && (r.notas || []).length).map(([k, r]) => `<li><b>${esc(nom(k))}</b>: ${esc(r.notas.join(" · "))}</li>`);
+  $("#instalDet").innerHTML = (no.length ? `<b>Unavailable</b> (greyed out below). Put each file in that folder under ComfyUI's <code>models</code> folder (subfolders are fine) and restart ComfyUI:<ul>`
+      + no.map(([t, k, r]) => `<li><b>${esc(nom(k))}</b> <span class="v-sub">(${t})</span>: ${esc(faltanTxt(r).join(" · "))}${(r.instalar || []).length ? " · install " + esc(r.instalar.join(", ")) : ""}</li>`).join("") + "</ul>" : "<p>Every engine and pass has its models and nodes.</p>")
+    + (notas.length ? `<b>Notes</b><ul>${notas.join("")}</ul>` : "") + avisoNodos;
+  b.onclick = () => { if (!no.length && !notas.length) return; const d = $("#instalDet"); d.hidden = !d.hidden; b.setAttribute("aria-expanded", String(!d.hidden)); };
+}
+// ---- translator on the master prompt: write in Spanish and it is translated to English automatically (what the models receive);
+// edit the English and the Spanish follows. Uses POST /renderpasses/traducir {texto, de, a}. "Expand" = both panels full-screen.
+let trReloj = null, trN = 0;
+async function traduceA(a) {
+  const de = a === "es" ? "en" : "es", src = a === "es" ? $("#prompt") : $("#promptEs"), dst = a === "es" ? $("#promptEs") : $("#prompt");
+  const texto = src.value.trim(), n = ++trN;
+  if (!texto) { dst.value = ""; return; }
+  $("#trEstado").textContent = "· translating…";
+  try { const r = await j("/renderpasses/traducir", { texto, de, a });
+        if (n === trN && document.activeElement !== dst) { dst.value = r.texto; if (a === "en") listo(); }
+        $("#trEstado").textContent = ""; }
+  catch (er) { $("#trEstado").textContent = "· translator not available (you can still write in English)"; }
+}
+$("#promptEs").addEventListener("input", () => { clearTimeout(trReloj); trReloj = setTimeout(() => traduceA("en"), 700); });
+$("#prompt").addEventListener("input", () => { clearTimeout(trReloj); trReloj = setTimeout(() => traduceA("es"), 700); });
+$("#ampliar").onclick = () => { const c = $("#compoPrompt"), g = c.classList.toggle("grande"); $("#ampliar").dataset.tip = g ? "Shrink (Esc)" : "Expand both panels (Esc closes)"; };
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && $("#compoPrompt").classList.contains("grande")) $("#ampliar").click(); });
+// Output: Native · 2K · Original
+document.querySelectorAll("#resol button").forEach((b) => b.onclick = () => document.querySelectorAll("#resol button").forEach((x) => x.setAttribute("aria-pressed", x === b)));
+const resolucion = () => ($("#resol [aria-pressed=true]") || {}).value || "original";
+// ---- ✦ per-plate prompts: review, edit and pin them before rendering ----
+let PBG = [];
+function pintaPbg() {
+  $("#pbgLista").innerHTML = PBG.map((x, i) => `<div class="pbgFila${x.fijado ? " fijo" : ""}">
+    <div><img src="${esc(mini(x.nombre))}" alt=""><p class="n">${esc(x.nombre)}</p><span class="estado">${x.error ? "" : x.fijado ? "✦ pinned: Render uses this one" : "not pinned: Render will ask Qwen again"}</span></div>
+    <div>${x.error ? `<p class="v-sub">Qwen failed: ${esc(x.error)}</p>` : `<textarea data-i="${i}" spellcheck="true" aria-label="Prompt for ${esc(x.nombre)}">${esc(x.en || "")}</textarea>
+      <div class="bts"><button type="button" class="v-btn chico" data-fijar="${i}">✦ Pin this prompt</button>
+        <button type="button" class="lfant" data-rehacer="${i}">Ask Qwen to rewrite it</button>
+        ${x.fijado ? `<button type="button" class="lfant" data-quitar="${i}">Unpin</button>` : ""}</div>`}</div></div>`).join("");
+}
+async function pedirPbg(rehacer, solo) {
+  const carpeta = $("#carpeta").value.trim(); if (!carpeta) { avisos([["mal", "Choose a folder or upload images first."]]); return; }
+  if (!SEL.ruta) await $("#verCarpeta").onclick();
+  const archivos = solo ? [solo] : [...SEL.marcadas];
+  $("#pbg").hidden = false; $("#pbgMsg").textContent = "Qwen is looking at " + (archivos.length || +$("#limite").value || "all") + " image(s) and writing their prompts (~20 s each)…";
+  try {
+    const r = await j("/renderpasses/prompts_bg", { carpeta, archivos, limite: $("#limite").value, rehacer: !!rehacer });
+    if (solo) PBG = PBG.map((x) => x.nombre === solo ? (r.bgs[0] || x) : x); else PBG = r.bgs;
+    $("#pbgMsg").textContent = "Edit anything you want and “Pin” it: Render will use that prompt for that image.";
+    pintaPbg();
+  } catch (er) { $("#pbgMsg").textContent = er.message; }
+}
+$("#verPbg").onclick = () => pedirPbg(false);
+$("#pbgCerrar").onclick = () => { $("#pbg").hidden = true; };
+$("#pbgLista").addEventListener("click", async (ev) => {
+  const f = ev.target.closest("[data-fijar]"), r = ev.target.closest("[data-rehacer]"), q = ev.target.closest("[data-quitar]");
+  if (r) return pedirPbg(true, PBG[+r.dataset.rehacer].nombre);
+  const b = f || q; if (!b) return;
+  const i = +(b.dataset.fijar ?? b.dataset.quitar), x = PBG[i]; b.disabled = true;
+  try {
+    const en = $(`#pbgLista textarea[data-i="${i}"]`).value.trim();
+    const cambiado = en !== (x.en || "").trim();   // the English is pinned as typed; the stored Spanish copy is kept only if the text was not edited
+    const res = await j("/renderpasses/prompt_bg", q ? { clave: x.clave, quitar: true } : { clave: x.clave, en, ...(cambiado ? {} : { es: x.es || "" }) });
+    Object.assign(x, q ? { fijado: false } : { fijado: true, es: res.es, en: res.en });
+    $("#pbgMsg").textContent = q ? "Unpinned: Render will ask Qwen again for that image." : "Pinned: “" + x.nombre + "” will use this prompt on every Render.";
+    pintaPbg();
+  } catch (er) { $("#pbgMsg").textContent = er.message; b.disabled = false; }
+});
+// "How many": 1 · 3 · 5 to test, then All
+document.querySelectorAll("#probar button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("#probar button").forEach((x) => x.setAttribute("aria-pressed", x === b)); $("#limite").value = b.value; });
+$("#limite").oninput = () => document.querySelectorAll("#probar button").forEach((x) => x.setAttribute("aria-pressed", x.value === $("#limite").value));
+// "Keep original color" on the selected batch (CPU, no re-render). Moving the slider turns the switch on (otherwise it does nothing).
+const pintaDet = () => { const v = $("#colorDet").value; $("#colorDetN").textContent = v; $("#colorDet").style.setProperty("--p", v + "%"); };
+$("#colorDet").oninput = () => { pintaDet(); $("#colorOn").checked = true; };
+$("#colorAplicar").onclick = async () => {
+  const b = $("#colorAplicar"); b.disabled = true; $("#colorMsg").textContent = "Blending…";
+  try { const r = await j("/renderpasses/color", { lote: E.lote, on: $("#colorOn").checked, detalle: $("#colorDet").value / 100 });
+        $("#colorMsg").textContent = r.color.on ? `Done: ${r.mezclas} images with the original color and ${Math.round(r.color.detalle * 100)}% AI detail.` : "Off: showing the raw AI output.";
+        firma = ""; ver(); }
+  catch (er) { $("#colorMsg").textContent = er.message; }
+  b.disabled = false;
+};
+// ---- folder image selector ----
+const SEL = { ruta: "", archivos: [], marcadas: new Set() };
+const mini = (f) => `/renderpasses/mini?ruta=${encodeURIComponent(SEL.ruta)}&f=${encodeURIComponent(f)}&h=180`;
+function contarSel() {
+  const n = SEL.marcadas.size;
+  $("#elegidasN").textContent = n ? `${n} selected: only ${n === 1 ? "that one is" : "those are"} rendered` : (SEL.archivos.length ? "none selected: “How many” is used" : "");
+}
+function pintaSel() {
+  const lista = SEL.archivos;
+  $("#rejillaSel").innerHTML = lista.map((f) => `<label style="position:relative;display:block;cursor:pointer;border-radius:10px;overflow:hidden;outline:${SEL.marcadas.has(f) ? "3px solid var(--acento,#d8ff3e)" : "1px solid rgba(255,255,255,.1)"}">
+      <img src="${esc(mini(f))}" loading="lazy" alt="" style="display:block;width:100%;aspect-ratio:16/9;object-fit:cover;background:#000">
+      <input type="checkbox" data-f="${esc(f)}" ${SEL.marcadas.has(f) ? "checked" : ""} style="position:absolute;top:6px;left:6px;width:18px;height:18px">
+      <span class="v-sub" style="display:block;padding:4px 6px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f)}</span></label>`).join("")
+    || '<div class="v-sub">The folder has no images.</div>';
+  contarSel();
+}
+$("#rejillaSel").addEventListener("change", (ev) => { const c = ev.target.closest("input[data-f]"); if (!c) return;
+  c.checked ? SEL.marcadas.add(c.dataset.f) : SEL.marcadas.delete(c.dataset.f); pintaSel(); });
+$("#verCarpeta").onclick = async () => {
+  const ruta = $("#carpeta").value.trim(); if (!ruta) { $("#selMsg").textContent = "Type the folder path first."; $("#selector").hidden = false; return; }
+  $("#selector").hidden = false; $("#selMsg").textContent = "Reading the folder…";
+  try { const r = await j("/renderpasses/carpeta?ruta=" + encodeURIComponent(ruta));
+    if (SEL.ruta !== ruta) SEL.marcadas.clear();
+    SEL.ruta = ruta; SEL.archivos = r.archivos.map((a) => a.nombre); $("#selMsg").textContent = `${SEL.archivos.length} images. Select the ones to render (none selected = “How many”).`; pintaSel(); }
+  catch (er) { $("#selMsg").textContent = er.message; }
+};
+$("#carpeta").addEventListener("change", () => { if ($("#carpeta").value.trim() !== SEL.ruta) { SEL.marcadas.clear(); SEL.archivos = []; SEL.ruta = ""; $("#selector").hidden = true; contarSel(); } });
+// Upload loose images (no folder needed): button, drag & drop or paste
+async function subir(files) {
+  files = [...files].filter((f) => /\.(png|jpe?g|webp|tiff?)$/i.test(f.name)); if (!files.length) return;
+  $("#selector").hidden = false; $("#selMsg").textContent = `Uploading ${files.length} image(s)…`;
+  const fd = new FormData(); files.forEach((f) => fd.append("archivo", f, f.name));
+  try {
+    const r = await fetch("/renderpasses/subir", { method: "POST", body: fd }); const d = await r.json();
+    if (!r.ok) throw new Error(d.error || ("error " + r.status));
+    $("#carpeta").value = d.carpeta; ls("bglook.carpeta", d.carpeta); listo();
+    await $("#verCarpeta").onclick();
+    d.archivos.forEach((f) => SEL.marcadas.add(f)); pintaSel();
+    $("#selMsg").textContent = `${d.archivos.length} image(s) uploaded and selected: “Render” will use them.`;
+    avisos([["ok", `${d.archivos.length === 1 ? "Uploaded and selected: " + d.archivos[0] : d.archivos.length + " images uploaded and selected"}. “Render” will use ${d.archivos.length === 1 ? "it" : "them"}.`]]);
+  } catch (er) {   // show the error next to Render too, not only in the selector
+    $("#selMsg").textContent = er.message;
+    avisos([["mal", `Upload failed (${er.message === "Failed to fetch" ? "the server did not respond: was it restarting?" : er.message}). The previous folder is still active: do not render until the upload succeeds.`]]);
+  }
+}
+$("#subirBtn").onclick = () => $("#subirArch").click();
+// Create: plates from a prompt with Krea 2 (POST /renderpasses/crear, then GET ?id= until done). The finished plates land in an upload-style
+// folder and are loaded and selected exactly like uploaded images.
+$("#crearBtn").onclick = () => { const p = $("#crearPanel"); p.hidden = !p.hidden; $("#crearBtn").setAttribute("aria-expanded", String(!p.hidden)); if (!p.hidden) $("#crearPrompt").focus(); };
+["#crearFormato", "#crearN"].forEach((g) => document.querySelectorAll(g + " button").forEach((b) => b.onclick = () =>
+  document.querySelectorAll(g + " button").forEach((x) => x.setAttribute("aria-pressed", x === b))));
+const elegido = (g) => ($(g + " [aria-pressed=true]") || {}).value;
+// Live preview: the plates are one batch sampled by "RenderPasses · KSampler (batch preview)", which sends a grid of the whole batch at
+// every step. Listen to ComfyUI's websocket and show that grid (and the step) while OUR prompt is running.
+function vivoCrear() {
+  let ws = null, mio = null, corriendo = false, url = null;
+  const img = $("#crearVivoImg"), caja = $("#crearVivo");
+  const ver = (blob) => { if (url) URL.revokeObjectURL(url); url = URL.createObjectURL(blob); img.src = url; caja.hidden = false; $("#crearMinis").hidden = true; };
+  try {
+    ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws?clientId=rp_crear_" + Math.random().toString(36).slice(2));
+    ws.binaryType = "arraybuffer";
+    ws.onmessage = (ev) => {
+      if (typeof ev.data === "string") {
+        let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+        const d = m.data || {};
+        if (m.type === "executing") corriendo = !!mio && d.prompt_id === mio && d.node != null;
+        if (m.type === "progress" && mio && d.prompt_id === mio) $("#crearVivoPaso").textContent = `step ${d.value} of ${d.max}`;
+        return;
+      }
+      if (!corriendo) return;
+      const v = new DataView(ev.data), tipo = v.getUint32(0);
+      if (tipo === 1) ver(new Blob([ev.data.slice(8)], { type: v.getUint32(4) === 2 ? "image/png" : "image/jpeg" }));
+      else if (tipo === 4) {                                   // preview with metadata: [type][len][json][image]
+        const n = v.getUint32(4); let meta = {};
+        try { meta = JSON.parse(new TextDecoder().decode(ev.data.slice(8, 8 + n))); } catch (e) {}
+        if (!meta.prompt_id || meta.prompt_id === mio) ver(new Blob([ev.data.slice(8 + n)], { type: meta.image_type || "image/jpeg" }));
+      }
+    };
+  } catch (e) { ws = null; }
+  return { prompt: (pid) => { mio = pid; }, cerrar: () => { try { ws && ws.close(); } catch (e) {} if (url) URL.revokeObjectURL(url);
+    caja.hidden = true; $("#crearMinis").hidden = false; } };
+}
+$("#crearGo").onclick = async () => {
+  const prompt = $("#crearPrompt").value.trim(), boton = $("#crearGo"); let vivo = null;
+  if (prompt.length < 8) { $("#crearMsg").textContent = "Describe the plate first (a sentence or two)."; $("#crearPrompt").focus(); return; }
+  boton.disabled = true; $("#crearMsg").textContent = "Queueing…";
+  try {
+    const r = await j("/renderpasses/crear", { prompt, n: +elegido("#crearN"), formato: elegido("#crearFormato"), semilla: $("#semilla").value.trim() });
+    $("#crearMinis").innerHTML = Array.from({ length: r.total }, () => '<div class="espera"></div>').join("");
+    $("#crearMsg").textContent = `Krea 2 (${r.modelo}, ${r.pasos} steps) · ${r.tam[0]}×${r.tam[1]} · seed ${r.semilla} · in ComfyUI's queue…`;
+    vivo = vivoCrear();
+    let E;
+    for (;;) {
+      await new Promise((ok) => setTimeout(ok, 1500));
+      E = await j("/renderpasses/crear?id=" + encodeURIComponent(r.id));
+      if (E.prompt_id) vivo.prompt(E.prompt_id);
+      if (E.hecho) vivo.cerrar();
+      const url = (f) => "/view?type=input&subfolder=" + encodeURIComponent("renderpasses/subidas/" + r.id) + "&filename=" + encodeURIComponent(f);
+      $("#crearMinis").innerHTML = E.archivos.map((f) => `<img src="${esc(url(f))}" alt="${esc(f)}">`).join("") + '<div class="espera"></div>'.repeat(Math.max(0, E.total - E.archivos.length - E.errores.length));
+      $("#crearMsg").textContent = `${E.archivos.length} of ${E.total} created` + (E.errores.length ? ` · ${E.errores.length} failed: ${E.errores[0]}` : "") + (E.hecho ? "" : " · working…");
+      if (E.hecho) break;
+    }
+    if (!E.archivos.length) throw new Error(E.errores[0] || "nothing was created");
+    $("#carpeta").value = E.carpeta; ls("bglook.carpeta", E.carpeta); listo();
+    await $("#verCarpeta").onclick();
+    SEL.marcadas.clear(); E.archivos.forEach((f) => SEL.marcadas.add(f)); pintaSel();
+    $("#selMsg").textContent = `${E.archivos.length} plate(s) created with Krea 2 and selected: “Render” or “Extract passes” will use them.`;
+    avisos([["ok", `${E.archivos.length} plate(s) created and selected. Pick a look engine and Render, or go straight to passes.`]]);
+  } catch (er) { $("#crearMsg").textContent = er.message; }
+  finally { boton.disabled = false; if (vivo) vivo.cerrar(); }
+};
+$("#subirArch").onchange = () => { subir($("#subirArch").files); $("#subirArch").value = ""; };
+// Drag & drop: files from the file explorer, or images dragged from another page / the browser (URL → file).
+// Ctrl+V with a copied image works too. After dropping, if prompt and engines are set, "Render" is ready and focused.
+const arrastraImagen = (dt) => { const t = [...(dt?.types || [])]; return t.includes("Files") || t.includes("text/uri-list"); };
+let capasArrastre = 0;
+document.addEventListener("dragenter", (ev) => { if (!arrastraImagen(ev.dataTransfer)) return; capasArrastre++; document.body.classList.add("arrastra"); });
+document.addEventListener("dragleave", () => { if (--capasArrastre <= 0) { capasArrastre = 0; document.body.classList.remove("arrastra"); } });
+document.addEventListener("dragover", (ev) => { if (!arrastraImagen(ev.dataTransfer)) return; ev.preventDefault(); ev.dataTransfer.dropEffect = "copy"; });
+async function deUrl(url) {
+  const r = await fetch(url); if (!r.ok) throw new Error("could not read the dragged image (" + r.status + ")");
+  const b = await r.blob(); if (!/^image\//.test(b.type)) throw new Error("the dragged item is not an image");
+  let nombre = ""; try { const u = new URL(url, location.href); nombre = u.searchParams.get("filename") || decodeURIComponent(u.pathname.split("/").pop() || ""); } catch (e) {}
+  if (!/\.(png|jpe?g|webp|tiff?)$/i.test(nombre)) nombre = (nombre.replace(/\.[^.]*$/, "") || "dropped_" + Date.now()) + "." + (b.type.split("/")[1] || "png").replace("jpeg", "jpg");
+  return new File([b], nombre, { type: b.type });
+}
+document.addEventListener("drop", async (ev) => {
+  capasArrastre = 0; document.body.classList.remove("arrastra");
+  const dt = ev.dataTransfer; if (!arrastraImagen(dt)) return; ev.preventDefault();
+  let files = [...(dt.files || [])];
+  if (!files.length) {
+    const urls = (dt.getData("text/uri-list") || "").split(/\r?\n/).filter((x) => x && !x.startsWith("#"));
+    const html = dt.getData("text/html"); const m = html && html.match(/<img[^>]+src="([^"]+)"/i); if (!urls.length && m) urls.push(m[1].replace(/&amp;/g, "&"));
+    try { files = await Promise.all(urls.map(deUrl)); }
+    catch (er) { avisos([["mal", er.message === "Failed to fetch" ? "That image cannot be taken from the web (the site does not allow reading it): save it and drag it from a folder." : er.message]]); return; }
+  }
+  await subir(files); resaltarRender();
+});
+document.addEventListener("paste", (ev) => {
+  if (ev.target.closest && ev.target.closest("input, textarea, [contenteditable]")) return;
+  const fs = [...(ev.clipboardData?.files || [])].filter((f) => /^image\//.test(f.type)); if (!fs.length) return;
+  ev.preventDefault(); subir(fs.map((f, i) => new File([f], /\.(png|jpe?g|webp)$/i.test(f.name) ? f.name : "pasted_" + Date.now() + "_" + i + ".png", { type: f.type }))).then(resaltarRender);
+});
+function resaltarRender() { const b = $("#lanzar"); if (b.disabled) return; b.scrollIntoView({ behavior: "smooth", block: "center" }); b.focus({ preventScroll: true }); }
+$("#selTop").onclick = () => { SEL.archivos.slice(0, 10).forEach((f) => SEL.marcadas.add(f)); pintaSel(); };
+$("#selTodas").onclick = () => { SEL.archivos.forEach((f) => SEL.marcadas.add(f)); pintaSel(); };
+$("#selNinguna").onclick = () => { SEL.marcadas.clear(); pintaSel(); };
+function listo() { $("#lanzar").disabled = !$("#carpeta").value.trim() || !elegidos().length || !$("#prompt").value.trim(); }
+$("#carpeta").addEventListener("input", listo); $("#prompt").addEventListener("input", listo); $("#motores").addEventListener("change", listo);
+
+$("#guardar").onclick = async () => {
+  try { await j("/renderpasses/prompt", { prompt: $("#prompt").value }); V.aviso("Master prompt saved"); }
+  catch (e) { V.aviso("Not saved: " + e.message, 5000); }
+};
+// MOSS creativity (MOSS · depth only): 0 = fidelity, 100 = invents small details. Shown only while that engine is enabled.
+const pintaCrea = () => { const v = $("#creaMoss").value; $("#creaMossN").textContent = v; $("#creaMoss").style.setProperty("--p", v + "%"); ls("bglook.creaMoss", v); };
+const veCrea = () => { $("#creaCaja").hidden = !$('#motores input[value="moss_prof"]')?.checked; };
+$("#creaMoss").value = ls("bglook.creaMoss") ?? 30; pintaCrea();
+$("#creaMoss").oninput = pintaCrea;
+$("#motores").addEventListener("change", veCrea);
+new MutationObserver(veCrea).observe($("#motores"), { childList: true });
+$("#defecto").onclick = () => { $("#prompt").value = defecto; traduceA("es"); listo(); V.aviso("Default prompt restored · Save it to keep it", 3600); };
+$("#lanzar").onclick = async () => {
+  const b = $("#lanzar"); b.disabled = true; b.textContent = "Queueing…"; avisos([["", "Copying the plates and queueing…"]]);
+  ls("bglook.carpeta", $("#carpeta").value.trim());
+  try {
+    const r = await j("/renderpasses/lanzar", { carpeta: $("#carpeta").value.trim(), prompt: $("#prompt").value, limite: $("#limite").value, archivos: [...SEL.marcadas],
+      semilla: $("#semilla").value.trim(), intensidad: intensidad(), escalar4k: $("#escalar4k").checked, motores: elegidos(),
+      resolucion: resolucion(), fibo_directo: $("#fiboDirecto").checked, prompt_qwen: $("#promptQwen").checked, base2k: $("#base2k").checked,
+      creatividad: $("#creaMoss").value / 100 });
+    avisos([["ok", `Batch ${fechaLote(r.lote)}: ${r.bgs} BGs · ${r.trabajos} jobs queued · seed ${r.semilla}`],
+      ...(r.avisos || []).map((a) => [/licencia|comercial|licen[cs]e|commercial/i.test(a) ? "ojo" : "", a])]);
+    V.aviso("Comparison queued");
+    ls("bglook.lote", r.lote); await lotes(r.lote);   // the new batch stays selected after a reload too
+  } catch (e) { avisos([["mal", e.message]]); V.aviso(e.message, 5000); }
+  b.textContent = "Render"; listo();
+};
+
+// ---- ② ----
+async function lotes(elegir) {
+  // remembers the batch… but if a NEWER batch appeared since last time, that one is opened.
+  const Lp = await j("/renderpasses/lotes").catch(() => []), nuevo = (Lp[0] || {}).lote;
+  const hayNuevo = nuevo && nuevo !== ls("bglook.ultimoVisto"); if (nuevo) ls("bglook.ultimoVisto", nuevo);
+  const prev = elegir || $("#lotes").value || (hayNuevo ? nuevo : ls("bglook.lote"));
+  const L = Lp;
+  LOTES = L;   // the list says which batch has passes, and ③ picks the engine that has them
+  $("#lotes").innerHTML = L.length ? L.map((l) => `<option value="${esc(l.lote)}" title="${esc(l.carpeta)}">${l.nombre ? esc(l.nombre) + " · " : ""}${esc(fechaLote(l.lote))} · ${l.bgs} BG${l.bgs === 1 ? "" : "s"} · ${l.motores.length} engine${l.motores.length === 1 ? "" : "s"}${(l.pases || []).length ? " · ✓ passes" : ""}</option>`).join("")
+    : '<option value="">No batches yet</option>';
+  if (prev && L.some((l) => l.lote === prev)) $("#lotes").value = prev;
+  pintaGal(); firma = ""; ver();
+}
+function pintaGal() {
+  const act = $("#lotes").value;
+  $("#loteGal").innerHTML = LOTES.map((l) => `<button type="button" class="lcard" data-lote="${esc(l.lote)}" aria-pressed="${l.lote === act}" title="${esc(l.ruta || "")}">
+    ${l.mini ? `<img src="${esc(l.mini)}" loading="lazy" alt="">` : '<i class="sinmini"></i>'}<b>${esc(l.nombre || fechaLote(l.lote))}</b>
+    <span>${l.nombre ? esc(fechaLote(l.lote)) + " · " : ""}${esc((l.nombres_bg || []).join(", "))}</span>
+    <span>${l.bgs} BG · ${esc(l.motores.map(nombreMotor).join(", "))}${(l.pases || []).length ? ' · <em class="ok">✓ passes</em>' : ""}</span></button>`).join("");
+  const a = $("#loteGal").querySelector('[aria-pressed="true"]'); if (a) a.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+// the mouse wheel scrolls the batch strip horizontally
+$("#loteGal").addEventListener("wheel", (ev) => {
+  const g = $("#loteGal"); if (g.scrollWidth <= g.clientWidth || Math.abs(ev.deltaX) > Math.abs(ev.deltaY)) return;
+  ev.preventDefault(); g.scrollBy({ left: ev.deltaY * 1.2, behavior: "auto" });
+}, { passive: false });
+$("#loteGal").addEventListener("click", (ev) => { const c = ev.target.closest(".lcard"); if (!c) return;
+  $("#lotes").value = c.dataset.lote; $("#lotes").dispatchEvent(new Event("change")); });
+$("#loteNom").onclick = async () => { const l = LOTES.find((x) => x.lote === $("#lotes").value); if (!l) return;
+  const n = prompt("Name for this batch (to find and show it):", l.nombre || ""); if (n === null) return;
+  try { const r = await j("/renderpasses/lote_nombre", { lote: l.lote, nombre: n }); l.nombre = r.nombre; await lotes(l.lote); }
+  catch (er) { avisos([["mal", "Could not rename: " + er.message]]); } };
+$("#loteRuta").onclick = async () => { const l = LOTES.find((x) => x.lote === $("#lotes").value); if (!l) return;
+  try { await navigator.clipboard.writeText(l.ruta); avisos([["ok", "Path copied: " + l.ruta]]); } catch (e) { prompt("Batch path:", l.ruta); } };
+$("#lotes").onchange = () => { ls("bglook.lote", $("#lotes").value); pintaGal(); firma = ""; ver(); };
+$("#refrescar").onclick = () => lotes();
+
+// MOSS · depth at 4K or 8K in tiles, requested by hand per plate once the 2K output is in (the status comes from the server)
+function mosaicoBtns(b) {
+  const e = b.mosaico || "";
+  if (e && !/^listo|^error|^cancelled/.test(e)) return ` · <span class="pq">${esc(enUI(e))}</span>`;
+  return `${/^error/.test(e) ? ` · <span class="pq" data-tip="${esc(e)}">tiling failed</span>` : /^cancelled/.test(e) ? ` · <span class="pq">tiling cancelled</span>` : ""}<button type="button" class="mosb" data-mos="4096" data-stem="${esc(b.stem)}" data-tip="MOSS re-renders this image tile by tile at 4K (each tile with its reference, depth and original color): real detail, not an upscale · ~8 min">MOSS 4K</button><button type="button" class="mosb" data-mos="8192" data-stem="${esc(b.stem)}" data-tip="The same at 8K: ~30 tiles, ~30 min per plate">8K</button>`;
+}
+$("#res").addEventListener("click", async (ev) => {
+  const x = ev.target.closest("button[data-mos]"); if (!x || !E) return;
+  ev.stopPropagation(); x.disabled = true;
+  try { const r = await j("/renderpasses/moss_mosaico", { lote: E.lote, stem: x.dataset.stem, lado: +x.dataset.mos });
+        avisos([["ok", `MOSS · depth at ${r.lado / 1024}K in tiles: ~${r.minutos} min. It shows up as “${r.lado / 1024}K ↗” on the card.`]]);
+        const lote = E.lote; let n = 0;
+        const sigue = async () => { if ($("#lotes").value !== lote) return; firma = ""; await ver();
+          const b = (E.bgs || []).find((y) => y.stem === x.dataset.stem); if (b && !/^listo|^error/.test(b.mosaico || "") && ++n < 400) setTimeout(sigue, 8000); };
+        setTimeout(sigue, 3000); }
+  catch (er) { avisos([["mal", er.message]]); x.disabled = false; }
+}, true);
+
+async function ver() {
+  clearTimeout(reloj);
+  const lote = $("#lotes").value;
+  if (!lote) { E = null; $("#res").innerHTML = '<div class="vacio">Launch a comparison and it will show up here.</div>'; $("#avance").hidden = true; $("#enlaces").innerHTML = ""; return; }
+  let e;
+  try { e = await j("/renderpasses/estado?lote=" + encodeURIComponent(lote)); }
+  catch (er) { $("#res").innerHTML = `<div class="vacio">${esc(er.message)}</div>`; return; }
+  if ($("#lotes").value !== lote) return;
+  E = e;
+  const fin = E.hechos >= E.total;
+  $("#avance").hidden = fin; V.avance($("#avance"), E.hechos, E.total);   // rail only while working
+  $("#avEstado").hidden = false; $("#avEstado").className = "lest " + (fin ? "ok" : "va");
+  $("#avTxt").textContent = fin ? "Done" : (E.qwen && !E.hechos ? "Qwen is writing prompts" : "Working"); $("#avCuenta").textContent = `${E.hechos}/${E.total}`;
+  $("#avEstado").dataset.tip = "Output: " + (E.salida || "—");
+  $("#enlaces").innerHTML = (E.hoja ? `<a class="lico" href="${esc(E.hoja)}" target="_blank" rel="noopener" data-tip="Batch contact sheet (all images side by side)" aria-label="Batch contact sheet">▦</a>` : "")
+    + `<button type="button" class="lico" id="cancelarLote" data-tip="Cancel the rest of this batch" aria-label="Cancel batch">✕</button>`
+    + `<button type="button" class="v-btn chico" id="irPases">Extract passes ↓</button>`;
+  $("#cancelarLote").hidden = fin;
+  if ($("#colorCaja").dataset.lote !== E.lote) {   // color controls show what THIS batch has saved
+    const C = E.color || { on: false, detalle: 0.6 }; $("#colorCaja").dataset.lote = E.lote; $("#colorCaja").hidden = false;
+    $("#colorOn").checked = !!C.on; $("#colorDet").value = Math.round((C.detalle ?? 0.6) * 100); pintaDet(); $("#colorMsg").textContent = "";
+  }
+  $("#cancelarLote").onclick = async () => {
+    if (!confirm("Remove everything left in this batch (renders and passes) from the queue and stop the running job? Finished outputs are kept.")) return;
+    try { const r = await j("/renderpasses/cancelar", { lote: E.lote }); avisos([["", `Batch cancelled: ${r.quitados} jobs removed from the queue${r.cortado ? " and the running one stopped" : ""}.`]]); firma = ""; ver(); }
+    catch (er) { avisos([["mal", er.message]]); }
+  };
+  $("#irPases").onclick = () => { $("#t3").closest("section").scrollIntoView({ behavior: "smooth", block: "start" }); $("#pLanzar").focus({ preventScroll: true }); };
+  const f = JSON.stringify([E.lote, E.motores, E.bgs.map((b) => [b.original, b.salidas, b.hoja, b.prompt, b.prompt_es, b.sin_color, b.salidas_4k, b.mosaico])]);
+  if (f !== firma) { firma = f; pinta(); }
+  if (E.bgs[0]) { const fo = $("#fondo"); fo.style.setProperty("--escena", `url("${E.bgs[0].original}")`); fo.classList.add("render"); }
+  if (!fin) reloj = setTimeout(ver, 5000);
+  if (!$("#visor").hidden) muestra();
+  const pm = $("#pMotor"), antes = pm.value;
+  const con4k = E.bgs.some((b) => (b.salidas_4k || {}).moss_prof) ? ["moss_prof_4k"] : [];   // the tiled MOSS 4K also gives passes
+  if (pm.dataset.lote !== E.lote + con4k.join("")) {
+    const conP = ((LOTES.find((l) => l.lote === E.lote) || {}).pases) || [];
+    pm.innerHTML = [...E.motores, ...con4k, "original"].map((m) => `<option value="${esc(m)}">${esc(m === "original" ? "Original (no engine)" : m === "moss_prof_4k" ? nombreMotor("moss_prof") + " · 4K" : nombreMotor(m))}${conP.includes(m) ? " · ✓ has passes" : ""}</option>`).join("");
+    const guardado = ls("bglook.motor");
+    pm.dataset.lote = E.lote + con4k.join(""); pm.value = (conP.includes(guardado) && guardado) || conP[0] || ([...E.motores, ...con4k].includes(antes) ? antes : E.motores[0]); firmaP = ""; verPases();
+  }
+}
+
+// ---- ③ passes and layers ----
+let relojP = null, firmaP = "", PULT = null;
+// ---- pass cards: an icon that looks like the pass + a tooltip on how it is made ----
+const PASES_DATOS = [["depth", true], ["moge", true], ["hdr", false], ["normals", true], ["albedo", true], ["objetos", true], ["capas_stable", true], ["capas", false], ["cripto", true], ["paralaje", true]];
+const FICHA = {
+  depth: ["Depth", "Depth with Depth Anything V2: white = near. The refined depth (16-bit) and the fog pass are derived from it."],
+  position: ["Position", "3D position of every pixel (X, Y, Z) in camera space, derived from depth with an assumed 40° camera: float EXR for P_Matte, 3D fog and Relight in Nuke, plus distance (depth.Z) for ZDefocus. Requests Depth if missing. In the viewer, the 3D preview moves the camera over any pass using this depth."],
+  moge: ["MoGe-3", "Position (P) IN METERS and the camera lens, from a single image (MoGe-3, or MoGe-2 if it is missing; Microsoft, CVPR 2025): it does not guess scale or lens like the depth-based P. Outputs position_moge.exr, depth_moge.exr and normals as EXR; the 3D viewer uses it when present."],
+  hdr: ["Beauty HDR", "The beauty as a true HDR EXR: LTX 2.5's SDR → HDR (Lightricks IC-LoRA) rebuilds the highlights above white and writes a 16-bit EXR in ACEScg. Engines output 8 bits; this gives real range for grading and makes glow respond in comp. In the view, anything above 1.0 is tinted magenta. Needs the LTX 2.5 module, which this package does not bundle."],
+  normals: ["Normals", "Surface normals with Marigold V2."],
+  albedo: ["Albedo", "Unlit color with Marigold V2. Raw lighting comes with it (beauty ÷ albedo, linear EXR): albedo × raw lighting = beauty."],
+  materiales: ["Materials", "Separate mattes for sky, water, sand, rock and wood (Qwen says what is there, SAM3 cuts it out, edges refined against the beauty). Off by default: Cryptomatte already includes them, each by name."],
+  objetos: ["Objects", "Qwen lists what to separate; SAM3 cuts out each one at full resolution (PNG with alpha) and Klein fills in the background behind it."],
+  capas_stable: ["Stable-Layers", "Layers with the Stable-Layers LoRA on Qwen Layered: filled background + objects (Heun, 50 steps at 640 px). Stability Community license: production above US$1M/year needs an enterprise license."],
+  capas: ["RGBA Layers", "Qwen-Image-Layered (Apache-2.0) at 640 px: useful as mattes and guides."],
+  cripto: ["Cryptomatte (auto, experimental)", "Guessed from the image: Qwen names the elements, SAM3 cuts them out and edges are refined against the beauty, in a standard EXR with three layers (CryptoObject, CryptoAsset, CryptoMaterial). Good for a quick look, not production-clean. For production use “Cryptomatte from PSD layers…” on each plate below: the artist's PSD layers become the IDs, with their own clean edges. In Nuke: Cryptomatte node and eyedropper."],
+  paralaje: ["Parallax", "The plate split into 4 depth planes (front, mid, far, background) for 2.5D camera moves. Cut by depth; with Cryptomatte each element stays whole on its plane. Klein fills what each plane was hiding, so each one carries a margin of the occluded area and the background comes out complete. Needs Depth first (Cryptomatte recommended)."],
+  arcilla: ["Clay", "Klein re-renders the plate as white clay with the SAME light. Key and shadows come from “clay − fill”."],
+  relleno: ["Fill · GI", "Clay lit only by sky light and bounce, no sun and no cast shadows."],
+  oclusion: ["Occlusion", "Clay under even white light: only corners, cracks and contacts get darker."],
+  sss: ["SSS", "Light passing through thin parts (leaves, ears, membranes, lampshades), with Klein 3 and MOSS."],
+  mate_objetos: ["Characters", "Characters and props matte: they keep their color, everything else is black."],
+  sin_sombras: ["Shadows", "Klein removes the shadows (same plate, evenly lit) and the pass is the beauty divided by that version: shaded sides, contacts and cast shadows, sharp and aligned. Asking a model for “the shadow pass” directly fails; removing the shadows works well."],
+  emision: ["Emission", "Everything that emits its own light (glowing eyes, lamps, fire, screens, the sun) in its color, everything else black. Klein extracts it as a matte. For glow and for tinting characters passing nearby."],
+  mate_plantas: ["Plants", "Plants matte (SAM3 does not recognize stylized cacti; Klein does)."],
+  especular: ["Specular", "Highlights and reflections over black, like V-Ray's specular, with Klein 3 and MOSS. “Highlights” (small and sharp) and “Reflections” (broad) are derived from it."],
+};
+// line icons (24 px, round stroke, currentColor): grey when off, lime when on. Each one depicts its pass: depth = receding planes,
+// normals = sphere with arrows, albedo = palette…
+const ICO = {
+  depth: `<path d="M3 19h18"/><path d="M3 15.5l4.5-5 3.5 3.5 3-3 7 4.5" opacity=".45"/><path d="M3 19l5-5.5 4 3.5 3.5-3 5.5 5"/><path d="M12 4v4M10.3 6.3 12 8l1.7-1.7"/>`,
+  normals: `<circle cx="12" cy="13" r="5.5"/><path d="M12 7.5V3M10.3 4.7 12 3l1.7 1.7"/><path d="M16.2 9.3l3.3-3.3M17.4 5.8h2.1v2.1"/><path d="M7.8 9.3 4.5 6M4.5 8.1V6h2.1"/>`,
+  albedo: `<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.4 0 2-1 1.6-2.1-.5-1.3.3-2.4 1.7-2.4h1.9a3.3 3.3 0 0 0 3.3-3.3C20.5 7.3 16.7 3.5 12 3.5z"/><circle cx="7.8" cy="11" r="1.1"/><circle cx="10.5" cy="7.3" r="1.1"/><circle cx="15" cy="7.6" r="1.1"/>`,
+  materiales: `<rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M3.5 12c2-1.6 3.6-1.6 5.6 0s3.6 1.6 5.6 0 3.8-1.6 5.8 0"/><path d="M7 16.5h.01M10.5 17h.01M14 16.5h.01M17 17h.01M8.5 7.5l2.5-1.5 2.5 1.5"/>`,
+  position: `<path d="M12 12V3.5M12 12l7.5 4.3M12 12l-7.5 4.3"/><path d="M12 3.5l-1.6 1.8M12 3.5l1.6 1.8M19.5 16.3l-2.4.3M4.5 16.3l2.4.3"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/>`,
+  moge: `<path d="M4 18 12 4l8 14z"/><path d="M8 18l4-7 4 7"/><circle cx="12" cy="11" r="1.3" fill="currentColor"/>`,
+  hdr: `<path d="M3 17c3-6 6-9 9-9s6 3 9 9"/><path d="M12 3v2M5.6 5.6l1.4 1.4M18.4 5.6 17 7"/><path d="M3 20h18" opacity=".6"/>`,
+  paralaje: `<rect x="2.5" y="8" width="11" height="11" rx="2" opacity=".45"/><rect x="6.5" y="5.5" width="11" height="11" rx="2" opacity=".75"/><rect x="10.5" y="3" width="11" height="11" rx="2"/>`,
+  objetos: `<rect x="3.5" y="9" width="10" height="10" rx="2" stroke-dasharray="2 2.2" opacity=".55"/><path d="M14.5 3.5 20.5 7v6.5L14.5 17l-6-3.5V7z"/><path d="M8.5 7l6 3.5 6-3.5M14.5 10.5V17"/>`,
+  capas_stable: `<path d="M12 4 3.5 8.5 12 13l8.5-4.5z"/><path d="M3.5 12.5 12 17l8.5-4.5" opacity=".7"/><path d="M3.5 16.5 12 21l8.5-4.5" opacity=".4"/><path d="M19.5 1.5l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6z" fill="currentColor"/>`,
+  cripto: `<rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M3.5 13c3-1 5-4 7-9.5M10.5 20.5c1-3 4-6 10-7M13 3.5c0 4 2 7 7.5 8.5"/><circle cx="7" cy="8" r="1.2" fill="currentColor"/><circle cx="16" cy="17" r="1.2" fill="currentColor"/>`,
+  capas: `<path d="M12 4 3.5 8.5 12 13l8.5-4.5z"/><path d="M3.5 12.5 12 17l8.5-4.5" stroke-dasharray="2 2"/><path d="M3.5 16.5 12 21l8.5-4.5" stroke-dasharray="2 2" opacity=".55"/>`,
+  arcilla: `<circle cx="11" cy="11" r="6.5"/><path d="M15.5 6.5a6.5 6.5 0 0 1-9 9 6.5 6.5 0 0 0 9-9z" fill="currentColor" opacity=".35" stroke="none"/><path d="M8 20.5h11" opacity=".55"/><path d="M19.5 3.5l-2 2"/>`,
+  relleno: `<circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="9" stroke-dasharray="1.5 3" opacity=".6"/><path d="M8.5 11a3.5 3.5 0 0 1 3-2.5" opacity=".6"/>`,
+  oclusion: `<path d="M4 3.5v16.5h16.5"/><path d="M4 16.5 7.5 20M4 12.5l7.5 7.5M4 8.5l4 4" opacity=".55"/>`,
+  sss: `<path d="M12 21c-5-3.5-6.5-8-4-13.5C9.2 4.8 10.6 3.6 12 3c1.4.6 2.8 1.8 4 4.5 2.5 5.5 1 10-4 13.5z"/><path d="M12 7v10" opacity=".6"/><path d="M2.5 12h2M19.5 12h2M4 6l1.6 1.2M20 6l-1.6 1.2" opacity=".7"/>`,
+  mate_objetos: `<rect x="3" y="3" width="18" height="18" rx="3" stroke-dasharray="2.2 2.2" opacity=".55"/><circle cx="12" cy="9.5" r="2.8"/><path d="M6.5 18.5c.7-3 2.9-4.7 5.5-4.7s4.8 1.7 5.5 4.7"/>`,
+  sin_sombras: `<circle cx="9" cy="9" r="4.5"/><path d="M5 20h14M8.5 16.5c2 1 5 1 8.5-.5" opacity=".6"/><path d="M12.5 12.5 19 19" stroke-dasharray="1.6 1.8"/>`,
+  emision: `<circle cx="12" cy="12" r="3.4"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>`,
+  mate_plantas: `<rect x="3" y="3" width="18" height="18" rx="3" stroke-dasharray="2.2 2.2" opacity=".55"/><path d="M12 18.5v-8"/><path d="M12 13c-3 0-4.5-2-4.5-4.5 3 0 4.5 1.8 4.5 4.5zM12 11c3 0 4.5-2 4.5-4.5-3 0-4.5 1.8-4.5 4.5z"/>`,
+  especular: `<path d="M10 3.5l1.6 4.9 4.9 1.6-4.9 1.6L10 16.5l-1.6-4.9L3.5 10l4.9-1.6z"/><path d="M17.5 13.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/>`,
+};
+const MOTOR_CORTO = { klein3: "Klein", fibo2: "Fibo", krea2: "Krea", krea2v2: "Krea V2", moss: "MOSS" };
+function ficha(k, on, motores) {
+  const [nom, tip] = FICHA[k] || [k, ""], m = (motores || []).map((x) => MOTOR_CORTO[x] || x).join(" + ");
+  const t = tip + (m ? " · " + m : "");
+  return `<label class="ficha" data-tip="${esc(t)}"><input type="checkbox" value="${esc(k)}"${on ? " checked" : ""} aria-label="${esc(nom + ". " + t)}">
+    <i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[k] || '<circle cx="12" cy="12" r="6"/>'}</svg></i><span>${esc(nom)}</span>${m ? `<em>${esc(m)}</em>` : ""}</label>`;
+}
+const ETQ = { depth: "Depth", normals: "Normals", albedo: "Albedo", sombreado: "Shading (legacy)", raw_lighting: "Raw lighting · beauty ÷ albedo", cripto: "Cryptomatte · objects", cripto_material: "Cryptomatte · materials",
+  niebla: "Fog · ramp over depth", depth_afinado: "Depth · refined to plate size (16-bit)", position: "Position (P) · camera space", moge_position: "Position (P) · MoGe (meters)", moge_depth: "Depth · MoGe",
+  cavidad: "Cavity · dark cracks, light edges", beauty_hdr: "Beauty HDR · ACEScg (magenta = above 1.0)", suelo: "Ground · where to place characters", luz_esfera: "Character light · sample sphere" };
+const nomPase = (k) => ETQ[k] || enUI(k);   // display name for a pass key (the key itself is unchanged)
+// tooltip of each "EXR ↓" chip
+const EXR_TIT = { cripto: "Cryptomatte EXR (CryptoObject): in Nuke, Cryptomatte node and eyedropper", cripto_material: "Cryptomatte EXR (CryptoMaterial layer)",
+  position: "Float EXR: X Y Z position in camera space (assumed 40° camera, near 1, far 100): P_Matte, 3D fog, Relight",
+  depth_afinado: "Float EXR: (estimated) distance for ZDefocus in “depth” mode",
+  moge_position: "Float EXR: X Y Z position in METERS in Nuke camera space, with the lens estimated by MoGe",
+  moge_depth: "Float EXR: distance in meters along the view direction (MoGe)",
+  beauty_hdr: "True HDR EXR (16-bit, ACEScg): highlights go above 1.0. In Nuke: Read in ACEScg (or OCIO ACEScg → your working space)" };
+async function verPases() {
+  clearTimeout(relojP);
+  const lote = $("#lotes").value, motor = $("#pMotor").value;
+  if (!lote || !motor) return;
+  let P;
+  try { P = await j(`/renderpasses/pases/estado?lote=${encodeURIComponent(lote)}&motor=${encodeURIComponent(motor)}`); }
+  catch (er) { $("#pEstado").textContent = er.message; return; }
+  PULT = P;
+  if (!P.lanzado) {
+    const otros = LOTES.filter((l) => (l.pases || []).length).map((l) => `${fechaLote(l.lote)} (${l.pases.map(nombreMotor).join(", ")})`);
+    $("#pEstado").textContent = "This batch has no passes with " + nombreMotor(motor) + " yet: pick the passes and click “Extract passes”." + (otros.length ? " Passes exist in: " + otros.join(" · ") + " (select it in ② above)." : "");
+    $("#pRes").innerHTML = ""; firmaP = ""; return;
+  }
+  const fin = P.hechos >= P.total;
+  $("#pEstado").textContent = `${P.hechos} of ${P.total} GPU passes done${fin ? "" : " · working…"} · ${P.salida}`;
+  const f = JSON.stringify(P.bgs.map((b) => [b.pases, b.pases_4k, b.exr, b.nuke, b.paralaje, b.moge, b.luz, b.hdr_pases, b.splat]));
+  if (f !== firmaP) {
+    firmaP = f;
+    $("#pRes").innerHTML = P.bgs.map((b) => `<article class="bg" data-beauty="${esc(b.beauty || "")}" data-original="${esc(b.original || "")}" data-depth="${esc(b.pases.depth_afinado || b.pases.depth || "")}" data-pos="${esc(b.pases.moge_position || b.pases.position || "")}" data-bg="${esc(b.nombre)}"><div class="h"><b>${esc(b.nombre)}${(b.luz || {}).lado ? ` <span class="pq" data-tip="Key light estimated from the MoGe normals and the raw lighting: azimuth ${b.luz.azimut}°, elevation ${b.luz.elevacion}°, key/fill ratio ${b.luz.proporcion}. Use it to light characters to match the plate"><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${esc(b.luz.key)};vertical-align:middle"></i> key ${esc(enUI(b.luz.lado))}, ${Math.round(b.luz.elevacion)}° · <i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${esc(b.luz.relleno)};vertical-align:middle"></i> fill</span>` : ""}${(b.moge || {}).fov_x ? ` <span class="pq" data-tip="Lens estimated by MoGe for this plate (full-frame equivalent)">lens ≈ ${Math.round(b.moge.focal_35mm)} mm · ${b.moge.fov_x}°</span>` : ""}</b>
+      <span class="lacc"><button type="button" class="v-btn chico" data-psd="${esc(b.stem || "")}" data-tip="The production Cryptomatte: give the artist's layered PSD of this plate (.psd or .psb, up to 1.2 GB, overscan is fine), or a flat-colour ID mask (.png) together with its legend (.json: [{name, color, group?, material?}]). Each layer becomes one ID with its name and the artist's clean edges; the same layers also give the Objects and one matte per layer, and the parallax planes follow them. Replaces the AI Cryptomatte and Objects of this plate; “Extract passes” rebuilds them from this source">Layers from PSD / mask…</button>${b.pases._cripto_psd ? `<button type="button" class="v-btn chico" data-psd-quitar="${esc(b.stem || "")}" data-tip="Forget this plate's PSD / mask: the next “Extract passes” with Cryptomatte or Objects uses the AI again">Back to AI</button>` : ""}${(b.paralaje || []).length ? `<button type="button" class="v-btn chico" data-plx="${esc(b.nombre)}" data-tip="The parallax planes stacked: move the mouse (or let it move on its own) to see the 2.5D camera move">View parallax</button>${splatChip(b)}${splat3dChip(b)}` : ""}${(b.nuke || {}).exr ? `<a class="v-btn chico" href="${esc(b.nuke.exr)}" download data-tip="A single multi-layer EXR with every pass of this plate (linear beauty, albedo, raw lighting, P, depth.Z, normals, fog, AI passes and Cryptomatte) · ${esc(b.nuke.carpeta || "")}">Multi-layer EXR ↓</a><a class="v-btn chico" href="${esc(b.nuke.nk)}" download data-tip="Nuke script that reads the multi-layer EXR: rebuilds the beauty (albedo × raw lighting) with Cryptomatte and ZDefocus ready · in ${esc(b.nuke.carpeta || "")}">Nuke .nk ↓</a>` : ""}${(b.exr || {}).beauty_hdr ? `<button type="button" class="v-btn chico" data-compo="${esc(b.nombre)}" data-tip="HDR comp in nodes: Beauty HDR + the HDR passes (gain, floor), exposure and false color, in true float. Saves the final EXR">HDR Compo</button>` : ""}${CAP.hdr_ltx ? `<button type="button" class="v-btn chico" data-hdrltx="${esc(b.nombre)}" data-tip="Specular, highlights, reflections, emission, SSS and fill to HDR EXR with LTX 2.5 (ACEScg), one at a time (~5 min each). Each pass's “HDR ↓” chip then becomes the LTX one. Needs the LTX 2.5 module, which this package does not bundle">HDR with LTX</button>` : ""}<button type="button" class="v-btn chico" data-esc-todos="1" title="Image passes with SeedVR2; depth, normals and mattes with clean (non-AI) scaling">⤢ Upscale all passes to 4K</button></span></div><div class="rejilla">
+      ${b.beauty ? `<figure class="cuadro orig"><button type="button" class="pase" data-src="${esc(b.beauty)}" data-nom="Beauty · ${esc(nombreMotor(motor))}"><img src="${esc(b.beauty)}" loading="lazy" alt=""></button><figcaption>Beauty · ${esc(nombreMotor(motor))}</figcaption></figure>` : ""}
+      ${b.pases._hdr ? `<div class="vacio">Beauty HDR: ${esc(enUI(b.pases._hdr))}</div>` : ""}
+      ${b.pases._hdr_ltx ? `<div class="vacio">Pass HDR: ${esc(enUI(b.pases._hdr_ltx))}</div>` : ""}
+      ${b.pases._paralaje ? `<div class="vacio">Parallax: ${esc(enUI(b.pases._paralaje))}</div>` : ""}
+      ${b.pases._depth ? `<div class="vacio">Depth: ${esc(enUI(b.pases._depth))}</div>` : ""}
+      ${b.pases._objetos ? `<div class="vacio">Per-object layers: ${esc(enUI(b.pases._objetos))}</div>` : ""}
+      ${b.pases._cripto ? `<div class="vacio">Cryptomatte${b.pases._cripto_fuente === "psd" ? " from PSD" : b.pases._cripto_fuente === "mascara" ? " from mask" : ""}: ${esc(enUI(b.pases._cripto))}</div>` : ""}
+      ${Object.entries(b.pases).filter(([k]) => !k.startsWith("_") && !(b.pases.moge_depth && (k === "depth" || k === "depth_afinado"))).map(([k, u]) => { const al = /^(capa|layer|objeto|object)/i.test(k), hdr = (b.hdr_pases || []).includes(k); return `<figure class="cuadro${al ? " alfa" : ""}"><button type="button" class="pase" data-src="${esc(u)}" data-nom="${esc(nomPase(k))}"${al ? ' data-alfa="1"' : ""}><img src="${esc(u)}" loading="lazy" alt=""></button><figcaption>${esc(b.pases._cripto_fuente === "psd" && k === "cripto_material" ? "Cryptomatte · PSD groups" : nomPase(k))}${b.pases._cripto_fuente === "psd" && k === "cripto" ? ` <span class="pq" data-tip="${esc("IDs from the layers of " + (b.pases._cripto_psd || "the PSD"))}">from PSD · ${b.pases._cripto_capas} layers</span>` : ""}
+        </figcaption><span class="bchips">${(b.exr || {})[k] ? `<a class="b4k" href="${esc(b.exr[k])}" download title="${esc(EXR_TIT[k] || (hdr ? "True HDR EXR (float, ACEScg): highlights go above 1.0 with the range LTX 2.5 rebuilt in the Beauty HDR. In Nuke: Read in ACEScg" : "Linear float32 EXR · albedo_lineal × raw_lighting = beauty"))}">${hdr ? "HDR ↓" : "EXR ↓"}</a>` : `<a class="b4k" href="/renderpasses/exr?u=${encodeURIComponent(u)}" download title="Float32 EXR: color passes in linear, data passes with their values">EXR ↓</a>`}${(b.pases_4k || {})[k] ? `<a class="b4k" href="${esc(b.pases_4k[k])}" target="_blank" rel="noopener" title="Open the 4K pass">4K ↗</a>` : `<button type="button" class="b4k" data-esc="${esc(u)}" title="Upscale this pass to 4K">⤢ 4K</button>`}</span></figure>`; }).join("")}
+      ${b.pases._error ? `<div class="vacio">CPU passes: ${esc(b.pases._error)}</div>` : ""}</div></article>`).join("");
+  }
+  if (!fin) relojP = setTimeout(verPases, 8000);
+}
+// ---- parallax viewer: planes from back to front; each one shifts by 1/distance (near moves more) ----
+const PLX = { capas: [], x: 0, y: 0, t0: 0, raf: 0, raton: false };
+// The Parallax pass planes as 3D CARDS, each at its distance (in meters if MoGe-2 is available) and sized to fill the frame from the
+// original camera, viewed by a camera with the MoGe lens that moves: real perspective, like Card + Camera + ScanlineRender in Nuke.
+const VSC = "attribute vec2 p;uniform vec3 cam;uniform vec2 fk;uniform vec2 m;uniform float z;varying vec2 v;" +
+  "void main(){v=vec2(p.x*.5+.5,.5-p.y*.5);vec3 q=vec3(p.x*m.x*z,p.y*m.y*z,-z)-cam;float w=-q.z;gl_Position=vec4(q.x*fk.x,q.y*fk.y,0.,w);}";
+const FSC = "precision highp float;uniform sampler2D c;varying vec2 v;void main(){gl_FragColor=texture2D(c,v);}";
+function plxCartas(b) {
+  const L = [...b.paralaje].sort((p, q) => (q.z || 0) - (p.z || 0));            // back to front
+  $("#plxCaja").innerHTML = '<canvas style="position:absolute;inset:0;width:100%;height:100%"></canvas>';
+  const cv = $("#plxCaja canvas"), gl = cv.getContext("webgl", { antialias: true, premultipliedAlpha: false });
+  if (!gl) return false;
+  const fov = (b.moge || {}).fov_x || 40, tx = Math.tan(fov * Math.PI / 360);
+  const sh = (t, src) => { const o = gl.createShader(t); gl.shaderSource(o, src); gl.compileShader(o); return o; };
+  const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, VSC)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FSC)); gl.linkProgram(pr); gl.useProgram(pr);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  const ap = gl.getAttribLocation(pr, "p"); gl.enableVertexAttribArray(ap); gl.vertexAttribPointer(ap, 2, gl.FLOAT, false, 0, 0);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  const U = { cam: gl.getUniformLocation(pr, "cam"), fk: gl.getUniformLocation(pr, "fk"), m: gl.getUniformLocation(pr, "m"), z: gl.getUniformLocation(pr, "z") };
+  gl.uniform1i(gl.getUniformLocation(pr, "c"), 0);
+  const cartas = L.map((p) => ({ z: Math.max(p.z || 1, 0.05), tex: null, nombre: p.nombre }));
+  let ar = 16 / 9, faltan = L.length;
+  L.forEach((p, i) => { const im = new Image(); im.onload = () => {
+    const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, im); cartas[i].tex = t;
+    if (i === 0) { ar = im.naturalWidth / im.naturalHeight; $("#plxCaja").style.setProperty("--ar", ar); cv.width = Math.min(im.naturalWidth, 2400); cv.height = Math.round(cv.width / ar); }
+    faltan--; }; im.src = p.url; });
+  const cerca = Math.min(...cartas.map((c) => c.z));
+  PLX.cartas = { gl, U, cartas, listo: () => faltan === 0, paso: (x, y, k) => {
+    const ty = tx / ar, zoom = 1.06;                                                // slightly tighter so card edges are not visible
+    gl.viewport(0, 0, cv.width, cv.height); gl.clearColor(0.06, 0.065, 0.08, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.uniform2f(U.fk, zoom / tx, zoom / ty); gl.uniform3f(U.cam, x * k * cerca, -y * k * cerca * 0.5, 0);
+    cartas.forEach((c) => { gl.bindTexture(gl.TEXTURE_2D, c.tex); gl.uniform2f(U.m, tx, ty); gl.uniform1f(U.z, c.z); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); });
+  } };
+  $("#plxInfo").textContent = `3D cards · lens ${Math.round(fov)}°${b.moge && b.moge.fov_x ? " (MoGe-2)" : " (assumed)"} · ` + L.map((p) => `${enUI(p.nombre)} ${p.z}${b.moge && b.moge.fov_x ? " m" : ""}`).join(" · ");
+  return true;
+}
+// MoGe projection, like Project3D in Nuke: each parallax plane is PROJECTED from the original camera onto its own mesh (MoGe-2 distance,
+// occluded areas filled from their edge) and viewed by a moving camera. The ground recedes in perspective and shapes have volume.
+const VSG = "attribute vec2 uv;attribute float z;uniform vec4 K;uniform vec3 cam;uniform vec2 fk;varying vec2 v;" +
+  "void main(){v=uv;vec3 P=vec3((uv.x-K.z)/K.x*z,-(uv.y-K.w)/K.y*z,-z);vec3 q=P-cam;float w=-q.z;float n=.05,f=500.;" +
+  "gl_Position=vec4(q.x*fk.x,q.y*fk.y,(w*(f+n)-2.*f*n)/(f-n),w);}";
+const FSG = "precision highp float;uniform sampler2D c;varying vec2 v;void main(){vec4 t=texture2D(c,v);if(t.a<0.02)discard;gl_FragColor=t;}";
+async function plxGeo(b) {
+  const r = await fetch("/renderpasses/paralaje_geo?u=" + encodeURIComponent(b.paralaje[0].url.replace(/plano_\d+\.png/, "plano_1.png")));
+  if (!r.ok) return false;
+  const buf = await r.arrayBuffer(), n = new DataView(buf).getUint32(0, true);
+  const G = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, n))), off = 4 + n + ((4 - (4 + n) % 4) % 4);
+  const { w, h } = G, D = new Float32Array(buf, off), k = G.planos.length;
+  $("#plxCaja").innerHTML = '<canvas style="position:absolute;inset:0;width:100%;height:100%"></canvas>';
+  const cv = $("#plxCaja canvas"), gl = cv.getContext("webgl", { antialias: true, premultipliedAlpha: false });
+  if (!gl || !gl.getExtension("OES_element_index_uint")) return false;
+  const sh = (t, src) => { const o = gl.createShader(t); gl.shaderSource(o, src); gl.compileShader(o); return o; };
+  const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, VSG)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FSG)); gl.linkProgram(pr); gl.useProgram(pr);
+  const UV = new Float32Array(w * h * 2); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { UV[(y * w + x) * 2] = (x + .5) / w; UV[(y * w + x) * 2 + 1] = (y + .5) / h; }
+  const bUV = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bUV); gl.bufferData(gl.ARRAY_BUFFER, UV, gl.STATIC_DRAW);
+  const aUV = gl.getAttribLocation(pr, "uv"), aZ = gl.getAttribLocation(pr, "z");
+  const I = []; for (let y = 0; y < h - 1; y++) for (let x = 0; x < w - 1; x++) { const a = y * w + x; I.push(a, a + w, a + 1, a + 1, a + w, a + w + 1); }
+  const bI = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bI); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(I), gl.STATIC_DRAW);
+  const U = { K: gl.getUniformLocation(pr, "K"), cam: gl.getUniformLocation(pr, "cam"), fk: gl.getUniformLocation(pr, "fk") };
+  gl.uniform4f(U.K, G.fx, G.fy, G.cx, G.cy); gl.uniform1i(gl.getUniformLocation(pr, "c"), 0);
+  // no depth test: plane order is known and they are drawn back to front (as a compositor stacks); with it, the filled
+  // background ground ended up partly "in front" of legs and hid them with striping
+  gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  const capas = []; let faltan = k, ar = w / h;
+  for (let j = k - 1; j >= 0; j--) {                                                // back to front
+    const bz = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bz); gl.bufferData(gl.ARRAY_BUFFER, D.subarray(j * w * h, (j + 1) * w * h), gl.STATIC_DRAW);
+    const capa = { bz, tex: null }; capas.push(capa);
+    const im = new Image(); im.onload = () => { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, im); capa.tex = t;
+      if (j === k - 1) { ar = im.naturalWidth / im.naturalHeight; $("#plxCaja").style.setProperty("--ar", ar); cv.width = Math.min(im.naturalWidth, 2400); cv.height = Math.round(cv.width / ar); }
+      faltan--; }; im.src = G.planos[j].url;
+  }
+  let cerca = Infinity; for (let i = 0; i < w * h; i++) if (D[i] < cerca) cerca = D[i];
+  const zoom = 1.04;
+  PLX.cartas = { listo: () => faltan === 0, paso: (x, y, kk) => {
+    gl.viewport(0, 0, cv.width, cv.height); gl.clearColor(0.06, 0.065, 0.08, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.uniform2f(U.fk, 2 * G.fx * zoom, 2 * G.fy * zoom); gl.uniform3f(U.cam, x * kk * cerca, -y * kk * cerca * 0.5, 0);
+    capas.forEach((c) => {
+      gl.bindBuffer(gl.ARRAY_BUFFER, bUV); gl.enableVertexAttribArray(aUV); gl.vertexAttribPointer(aUV, 2, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, c.bz); gl.enableVertexAttribArray(aZ); gl.vertexAttribPointer(aZ, 1, gl.FLOAT, false, 0, 0);
+      gl.bindTexture(gl.TEXTURE_2D, c.tex); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bI); gl.drawElements(gl.TRIANGLES, I.length, gl.UNSIGNED_INT, 0);
+    });
+  } };
+  $("#plxInfo").textContent = `MoGe-2 projection · lens ${Math.round(G.fov_x)}° · ` + G.planos.map((p) => `${enUI(p.nombre)} ${p.z} m`).join(" · ");
+  return true;
+}
+function plxAbrir(b) {
+  PLX.gl = null; PLX.glP = null; PLX.cartas = null; $("#plxEstirarL").hidden = true;
+  if (b.moge && b.moge.fov_x && $("#plxProy").checked) {
+    $("#plx").hidden = false; $("#plxInfo").textContent = "Building the MoGe-2 geometry…"; $("#plxProyL").hidden = false;
+    plxGeo(b).then((ok) => { if (!ok && plxCartas(b)) {} PLX.t0 = performance.now(); cancelAnimationFrame(PLX.raf); plxPaso(); });
+    PLX.ultimoBG = b; return;
+  }
+  $("#plxProyL").hidden = !(b.moge && b.moge.fov_x); PLX.ultimoBG = b;
+  if (plxCartas(b)) { $("#plx").hidden = false; PLX.t0 = performance.now(); cancelAnimationFrame(PLX.raf); plxPaso(); return; }
+  const L = [...b.paralaje].sort((p, q) => (q.z || 0) - (p.z || 0));            // back to front
+  const iz = L.map((p) => 1 / Math.max(p.z || 100, 0.5)), lo = Math.min(...iz), hi = Math.max(...iz);
+  $("#plxCaja").innerHTML = L.map((p) => `<img src="${esc(p.url)}" alt="">`).join("");
+  PLX.capas = [...$("#plxCaja").querySelectorAll("img")].map((im, i) => ({ im, w: hi > lo ? (iz[i] - lo) / (hi - lo) : 0 }));
+  const im0 = PLX.capas[0] && PLX.capas[0].im; if (im0) im0.onload = () => $("#plxCaja").style.setProperty("--ar", im0.naturalWidth / im0.naturalHeight);
+  $("#plxInfo").textContent = L.map((p) => `${enUI(p.nombre)} ${p.z}`).join(" · ");
+  $("#plx").hidden = false; PLX.t0 = performance.now(); cancelAnimationFrame(PLX.raf); plxPaso();
+}
+// "3D preview": moves the camera over ANY pass using the plate's depth, without extracting planes: each pixel shifts by its depth (WebGL).
+const VS3 = "attribute vec2 p;varying vec2 v;void main(){v=p*.5+.5;v.y=1.-v.y;gl_Position=vec4(p,0.,1.);}";
+// Depth is marched from NEAR to FAR and the first hit wins (like parallax occlusion mapping in games), so edges do not duplicate.
+const FS3 = "precision highp float;uniform sampler2D c,d;uniform vec2 m;varying vec2 v;" +
+  "void main(){vec2 u=.5+(v-.5)/1.08;const int N=64;float t0=1.,h0=texture2D(d,u-m*.65).r;vec2 q=u-m*.65;" +
+  "for(int i=1;i<=N;i++){float t=1.-float(i)/float(N);vec2 p=u-m*(t-.35);float h=texture2D(d,p).r;" +
+  "if(h>=t){float a=(h0-t0)/((h0-t0)-(h-t));float tt=mix(t0,t,clamp(a,0.,1.));q=u-m*(tt-.35);break;}t0=t;h0=h;q=p;}" +
+  "gl_FragColor=texture2D(c,q);}";
+function plx3D(color, depth, nombre) {
+  cancelAnimationFrame(PLX.raf); PLX.capas = []; PLX.glP = null; PLX.cartas = null; $("#plxEstirarL").hidden = true;
+  $("#plxCaja").innerHTML = '<canvas style="position:absolute;inset:0;width:100%;height:100%"></canvas>';
+  const cv = $("#plxCaja canvas"), gl = cv.getContext("webgl", { premultipliedAlpha: false });
+  if (!gl) { $("#plxInfo").textContent = "This browser has no WebGL"; $("#plx").hidden = false; return; }
+  const sh = (t, src) => { const o = gl.createShader(t); gl.shaderSource(o, src); gl.compileShader(o); return o; };
+  const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS3)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS3)); gl.linkProgram(pr); gl.useProgram(pr);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  const ap = gl.getAttribLocation(pr, "p"); gl.enableVertexAttribArray(ap); gl.vertexAttribPointer(ap, 2, gl.FLOAT, false, 0, 0);
+  const tex = (unidad, url, listo) => { const im = new Image(); im.onload = () => { gl.activeTexture(gl.TEXTURE0 + unidad); gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, im); listo && listo(im); }; im.src = url; };
+  let n = 0;
+  tex(0, color, (im) => { $("#plxCaja").style.setProperty("--ar", im.naturalWidth / im.naturalHeight); cv.width = Math.min(im.naturalWidth, 2400); cv.height = Math.round(cv.width * im.naturalHeight / im.naturalWidth); n++; });
+  tex(1, depth, () => n++);
+  gl.uniform1i(gl.getUniformLocation(pr, "c"), 0); gl.uniform1i(gl.getUniformLocation(pr, "d"), 1);
+  PLX.gl = { gl, um: gl.getUniformLocation(pr, "m"), listo: () => n === 2 };
+  $("#plxInfo").textContent = "3D from depth · " + nombre;
+  $("#plx").hidden = false; PLX.t0 = performance.now(); plxPaso();
+}
+document.addEventListener("click", (ev) => { if (!ev.target.closest("#pvPlx")) return; ev.stopPropagation();   // "View parallax" inside the pass viewer
+  const b = PULT && PULT.bgs.find((x) => x.nombre === PV.bg); if (b) plxAbrir(b); }, true);
+document.addEventListener("click", (ev) => { if (!ev.target.closest("#pvTres")) return; ev.stopPropagation();   // the pass viewer is created further below
+  const it = PV.lista[PV.i]; if (!it) return;   // always the beauty, not the pass itself
+  const col = PV.ref.beauty || it.src; if (PV.pos) plxP(col, PV.pos, "Beauty"); else if (PV.depth) plx3D(col, PV.depth, "Beauty"); }, true);
+// Test the P pass the way Nuke would use it: each pixel goes to the 3D point in position.exr and is re-shot by a moving 40° camera
+// (PositionToPoints + ScanlineRender). Holes stay visible (occluded areas are not in the image); "Stretch edges" covers them by stretching.
+const VSP = "attribute vec3 P;attribute vec2 t;uniform vec3 cam;uniform vec2 fk;varying vec2 v;" +
+  "void main(){vec3 q=P-cam;float z=-q.z;v=t;float n=.2,f=80.;gl_Position=vec4(q.x*fk.x,q.y*fk.y,(z*(f+n)-2.*f*n)/(f-n),z);}";
+const FSP = "precision highp float;uniform sampler2D c;varying vec2 v;void main(){gl_FragColor=texture2D(c,v);}";
+async function plxP(color, posUrl, nombre) {
+  cancelAnimationFrame(PLX.raf); PLX.capas = []; PLX.gl = null; PLX.glP = null; PLX.cartas = null;
+  $("#plxInfo").textContent = "Reading the P pass…"; $("#plx").hidden = false; $("#plxEstirarL").hidden = false;
+  const r = await fetch("/renderpasses/position_bin?u=" + encodeURIComponent(posUrl));
+  if (!r.ok) { $("#plxInfo").textContent = "No position.exr for this plate: enable the Position card and “Extract passes”"; return; }
+  const w = +r.headers.get("X-W"), h = +r.headers.get("X-H"), fov = +r.headers.get("X-Fov") || 40, P = new Float32Array(await r.arrayBuffer());
+  $("#plxCaja").innerHTML = '<canvas style="position:absolute;inset:0;width:100%;height:100%"></canvas>';
+  const cv = $("#plxCaja canvas"), gl = cv.getContext("webgl", { antialias: true, premultipliedAlpha: false });
+  if (!gl || !gl.getExtension("OES_element_index_uint")) { $("#plxInfo").textContent = "This browser has no WebGL"; return; }
+  const n = w * h, V = new Float32Array(n * 5);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x;
+    V.set([P[i * 3], P[i * 3 + 1], P[i * 3 + 2], (x + 0.5) / w, (y + 0.5) / h], i * 5); }
+  const todos = [], cortados = [];
+  for (let y = 0; y < h - 1; y++) for (let x = 0; x < w - 1; x++) {
+    const a = y * w + x, b = a + 1, c = a + w, d = c + 1;
+    const z0 = -P[a * 3 + 2], z1 = -P[b * 3 + 2], z2 = -P[c * 3 + 2], z3 = -P[d * 3 + 2];
+    todos.push(a, c, b, b, c, d);
+    if (Math.max(z0, z1, z2, z3) / Math.max(Math.min(z0, z1, z2, z3), 1e-3) < 1.06) cortados.push(a, c, b, b, c, d);   // depth jump = object edge
+  }
+  const sh = (t, src) => { const o = gl.createShader(t); gl.shaderSource(o, src); gl.compileShader(o); return o; };
+  const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, VSP)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FSP)); gl.linkProgram(pr); gl.useProgram(pr);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, V, gl.STATIC_DRAW);
+  const aP = gl.getAttribLocation(pr, "P"), aT = gl.getAttribLocation(pr, "t");
+  gl.enableVertexAttribArray(aP); gl.vertexAttribPointer(aP, 3, gl.FLOAT, false, 20, 0);
+  gl.enableVertexAttribArray(aT); gl.vertexAttribPointer(aT, 2, gl.FLOAT, false, 20, 12);
+  const ib = (arr) => { const b = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, b); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(arr), gl.STATIC_DRAW); return { b, n: arr.length }; };
+  const I = { todos: ib(todos), cortados: ib(cortados) };
+  gl.uniform1i(gl.getUniformLocation(pr, "c"), 0);
+  const fx = 1 / Math.tan(fov * Math.PI / 360) * 1.06;                             // the P pass camera, slightly tighter so the edge is not visible
+  gl.uniform2f(gl.getUniformLocation(pr, "fk"), fx, fx * w / h);
+  gl.enable(gl.DEPTH_TEST);
+  PLX.glP = { gl, ucam: gl.getUniformLocation(pr, "cam"), I, listo: false };
+  const im = new Image(); im.onload = () => {
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, im);
+    $("#plxCaja").style.setProperty("--ar", im.naturalWidth / im.naturalHeight);
+    cv.width = Math.min(im.naturalWidth, 2400); cv.height = Math.round(cv.width * im.naturalHeight / im.naturalWidth); PLX.glP.listo = true; };
+  im.src = color;
+  $("#plxInfo").textContent = `Camera moving over the P pass (${w}×${h} points) · ${nombre}`;
+  PLX.t0 = performance.now(); plxPaso();
+}
+function plxPaso() {
+  if ($("#plx").hidden) return;
+  if (PLX.cartas) {
+    let x = PLX.x, y = PLX.y;
+    if (!PLX.raton && $("#plxAuto").checked) { const t = (performance.now() - PLX.t0) / 1000; x = Math.sin(t * 0.7); y = Math.sin(t * 0.45) * 0.35; }
+    if (PLX.cartas.listo()) PLX.cartas.paso(x, y, $("#plxFuerza").value / 100 * 0.14);   // camera shifts up to 14% of the nearest distance (more, and the card edge shows)
+    PLX.raf = requestAnimationFrame(plxPaso); return;
+  }
+  if (PLX.glP) {
+    let x = PLX.x, y = PLX.y;
+    if (!PLX.raton && $("#plxAuto").checked) { const t = (performance.now() - PLX.t0) / 1000; x = Math.sin(t * 0.7); y = Math.sin(t * 0.45) * 0.35; }
+    const G = PLX.glP, gl = G.gl, k = $("#plxFuerza").value / 100 * 0.12;         // camera offset in P units (nearest is at 1); more, and occluded areas show
+    if (G.listo) {
+      gl.viewport(0, 0, gl.canvas.width, gl.canvas.height); gl.clearColor(0.06, 0.065, 0.08, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      gl.uniform3f(G.ucam, x * k, -y * k * 0.5, 0);
+      const ix = $("#plxEstirar").checked ? G.I.todos : G.I.cortados;
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ix.b); gl.drawElements(gl.TRIANGLES, ix.n, gl.UNSIGNED_INT, 0);
+    }
+    PLX.raf = requestAnimationFrame(plxPaso); return;
+  }
+  const f = $("#plxFuerza").value / 100 * 5;                                      // % of the width the nearest plane moves
+  let x = PLX.x, y = PLX.y;
+  if (!PLX.raton && $("#plxAuto").checked) { const t = (performance.now() - PLX.t0) / 1000; x = Math.sin(t * 0.7); y = Math.sin(t * 0.45) * 0.35; }
+  if (PLX.gl && !PLX.capas.length) {
+    const G = PLX.gl; if (G.listo()) { G.gl.viewport(0, 0, G.gl.canvas.width, G.gl.canvas.height); G.gl.uniform2f(G.um, x * f / 100 * 0.5, -y * f / 100 * 0.3); /* single image: more than ~2.5% of the width stretches the edges */ G.gl.drawArrays(G.gl.TRIANGLE_STRIP, 0, 4); }
+    PLX.raf = requestAnimationFrame(plxPaso); return;
+  }
+  PLX.capas.forEach(({ im, w }) => { im.style.transform = `translate(${(-x * f * w).toFixed(3)}%, ${(-y * f * w * 0.6).toFixed(3)}%)`; });
+  PLX.raf = requestAnimationFrame(plxPaso);
+}
+$("#plxCaja").addEventListener("pointermove", (ev) => { const r = $("#plxCaja").getBoundingClientRect(); PLX.x = (ev.clientX - r.left) / r.width * 2 - 1; PLX.y = (ev.clientY - r.top) / r.height * 2 - 1; PLX.raton = true; });
+// the mouse drives the camera while it is over the view; on leave, auto move resumes
+$("#plxCaja").addEventListener("pointerleave", () => { PLX.raton = false; PLX.t0 = performance.now(); });
+$("#plxProy").addEventListener("change", () => { if (PLX.ultimoBG) plxAbrir(PLX.ultimoBG); });
+const plxCerrar = () => { $("#plx").hidden = true; cancelAnimationFrame(PLX.raf); };
+$("#plxCerrar").onclick = plxCerrar;
+$("#plx").addEventListener("click", (ev) => { if (ev.target === $("#plx")) plxCerrar(); });
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && !$("#plx").hidden) plxCerrar(); });
+$("#pRes").addEventListener("click", (ev) => { const t = ev.target.closest("button[data-plx]"); if (!t || !PULT) return; const b = PULT.bgs.find((x) => x.nombre === t.dataset.plx); if (b) plxAbrir(b); });
+// Cryptomatte from the artist's layered PSD: pick the file, upload it with progress; the server builds the EXR in the background and the
+// plate's Cryptomatte card then reads "from PSD · N layers"
+let psdStem = "";
+$("#pRes").addEventListener("click", (ev) => { const t = ev.target.closest("button[data-psd]"); if (!t || !PULT) return; ev.stopPropagation(); psdStem = t.dataset.psd; $("#psdArch").value = ""; $("#psdArch").click(); });
+$("#psdArch").onchange = () => {
+  const fs = [...$("#psdArch").files]; if (!fs.length || !psdStem || !PULT) return;
+  const f = fs.find((x) => /\.(psd|psb|png|tiff?)$/i.test(x.name)), ley = fs.find((x) => /\.json$/i.test(x.name));
+  if (!f) { V.aviso("Pick a .psd / .psb, or a .png mask together with its .json legend", 5000); return; }
+  if (!/\.ps[db]$/i.test(f.name) && !ley) { V.aviso("A mask needs its .json legend: select both files at once", 5000); return; }
+  if (f.size > 1200 * 1024 * 1024) { V.aviso("The file is larger than 1.2 GB", 5000); return; }
+  const fd = new FormData(); fd.append("lote", PULT.lote); fd.append("motor", PULT.motor); fd.append("bg", psdStem); fd.append("psd", f, f.name);
+  if (ley) fd.append("leyenda", ley, ley.name);
+  const x = new XMLHttpRequest(), mb = (f.size / 1048576).toFixed(1);
+  clearTimeout(relojP);
+  x.upload.onprogress = (e) => { if (e.lengthComputable) { clearTimeout(relojP); $("#pEstado").textContent = `Uploading ${f.name} (${mb} MB): ${Math.round(e.loaded / e.total * 100)} %`; } };
+  x.onload = () => { let d = {}; try { d = JSON.parse(x.responseText); } catch (e) { d = {}; }
+    if (x.status >= 400 || d.error) { const m = d.error || "server responded " + x.status; $("#pEstado").textContent = "PSD not used: " + m; V.aviso("PSD not used: " + m, 6000); return; }
+    V.aviso((d.fuente === "mascara" ? "Mask" : "PSD") + " received: building the Cryptomatte, Objects and per-layer mattes from its layers", 3600); firmaP = ""; verPases(); };
+  x.onerror = () => { $("#pEstado").textContent = "The PSD upload failed"; V.aviso("The PSD upload failed", 5000); };
+  $("#pEstado").textContent = `Uploading ${f.name} (${mb} MB)…`;
+  x.open("POST", "/renderpasses/cripto_psd"); x.send(fd);
+};
+$("#pRes").addEventListener("click", async (ev) => { const t = ev.target.closest("button[data-psd-quitar]"); if (!t || !PULT) return; ev.stopPropagation();
+  try { await j("/renderpasses/cripto_psd", { lote: PULT.lote, motor: PULT.motor, bg: t.dataset.psdQuitar, quitar: true });
+        V.aviso("Back to the AI: the next “Extract passes” with Cryptomatte or Objects uses Qwen + SAM 3 again", 4500); t.remove(); }
+  catch (er) { V.aviso("Could not: " + er.message, 5000); } });
+$("#pMotor").onchange = () => { ls("bglook.motor", $("#pMotor").value); firmaP = ""; verPases(); };
+// Layered Gaussian splat: the parallax planes + MoGe depth as a real 3D splat (splat.ply in the plate's pass folder, built on the server).
+const SPLAT_NOTA = "open in ComfyUI's 3D viewer or any 3DGS viewer";
+function splatChip(b) {
+  if (!b.stem) return "";
+  const n = b.splat && b.splat.splats ? ` · ${(b.splat.splats / 1e6).toFixed(1)} M splats` : "";
+  return b.splat ? `<a class="v-btn chico" href="${esc(b.splat.url)}" download="${esc(b.stem)}_splat.ply" data-tip="Layered Gaussian splat${n}: every parallax plane, the repainted hidden areas included, at its MoGe depth · ${SPLAT_NOTA}">3D splat ↓</a><span class="pq">${SPLAT_NOTA}</span><button type="button" class="v-btn chico" data-splat="${esc(b.stem)}" data-tip="Build splat.ply again">↻</button>`
+    : `<button type="button" class="v-btn chico" data-splat="${esc(b.stem)}" data-tip="Turn the parallax planes and the MoGe depth into a layered 3D Gaussian splat (splat.ply, ~2 M splats, ~10 s) · ${SPLAT_NOTA}">3D splat</button>`;
+}
+$("#pRes").addEventListener("click", async (ev) => {
+  const t = ev.target.closest("button[data-splat]"); if (!t || !PULT) return;
+  ev.stopPropagation(); t.disabled = true; const antes = t.textContent; t.textContent = "Building splat…";
+  try { const r = await j("/renderpasses/splat", { lote: PULT.lote, motor: PULT.motor, bgs: [t.dataset.splat] });
+        if (!(r.hechos || []).length) throw new Error(((r.saltados || [])[0] || {}).motivo || "nothing to build");
+        const h = r.hechos[0];
+        $("#pEstado").textContent = `3D splat ready: ${(h.splats / 1e6).toFixed(2)} M splats · ${SPLAT_NOTA}`;
+        firmaP = ""; await verPases(); }
+  catch (er) { const m = "3D splat: " + er.message; $("#pEstado").textContent = m; V.aviso(m, 6000); t.disabled = false; t.textContent = antes; }
+}, true);
+// Live 3D splat (relightable): builds the plate's PBR splat scene on the server (once; Shift+click rebuilds it) and opens the PBR Director
+// in a new tab: free camera, key / fill / rim lights that relight the passes, 3D assets on the measured floor, WebM recording.
+function splat3dChip(b) {
+  return b.stem ? `<button type="button" class="v-btn chico" data-splat3d="${esc(b.stem)}" data-tip="Live, relightable Gaussian splatting from this plate's passes (parallax planes + MoGe + albedo + normals + Cryptomatte materials): free camera, lights that relight the scene, 3D assets on the measured floor. The first time it takes a few seconds to build · Shift+click rebuilds it">Live 3D splat</button>` : "";
+}
+$("#pRes").addEventListener("click", async (ev) => {
+  const t = ev.target.closest("button[data-splat3d]"); if (!t || !PULT) return;
+  ev.stopPropagation();
+  const ventana = window.open("about:blank", "_blank");   // opened on the click (otherwise the browser blocks it), filled when ready
+  const rehacer = ev.shiftKey, txt = t.textContent; t.disabled = true;
+  try {
+    const r = await j("/renderpasses/splat3d", { lote: PULT.lote, motor: PULT.motor, bg: t.dataset.splat3d, rehacer });
+    let listo = r.listo;
+    for (let i = 0; !listo && i < 240; i++) {
+      await new Promise((ok) => setTimeout(ok, 2500));
+      const e = await fetch(r.url + "estado.json?" + Date.now(), { cache: "no-store" }).then((x) => (x.ok ? x.json() : {})).catch(() => ({}));
+      if (String(e.estado || "").startsWith("error")) throw new Error(e.estado.replace(/^error:\s*/, ""));
+      if (e.estado === "listo") { listo = true; break; }
+      t.textContent = e.estado || "Building…";
+    }
+    if (!listo) throw new Error("still building: try again in a moment");
+    if (ventana) ventana.location.href = r.url; else location.href = r.url;
+  } catch (er) { if (ventana) ventana.close(); const m = "Live 3D splat: " + er.message; $("#pEstado").textContent = m; V.aviso(m, 6000); }
+  t.textContent = txt; t.disabled = false;
+}, true);
+
+// HDR with LTX: the color passes of a plate to HDR EXR with LTX 2.5. This package does not bundle the LTX module, so the server may
+// answer with an error: it is shown in the passes status line (and as a toast) and the button is re-enabled.
+$("#pRes").addEventListener("click", async (ev) => {
+  const t = ev.target.closest("button[data-hdrltx]"); if (!t || !PULT) return;
+  ev.stopPropagation(); t.disabled = true;
+  try { const r = await j("/renderpasses/hdr_ltx", { lote: PULT.lote, motor: PULT.motor, nombre: t.dataset.hdrltx });
+        const lista = (r.pases || []).map((k) => nomPase(k).split(" · ").pop()).join(", ");
+        $("#pEstado").textContent = `LTX 2.5 is converting to HDR: ${lista} (~${r.minutos} min). Each pass gets an “HDR ↓” chip.`;
+        let n = 0; const sigue = async () => { firmaP = ""; await verPases(); const b = ((PULT && PULT.bgs) || []).find((x) => x.nombre === t.dataset.hdrltx);
+          if (b && b.pases._hdr_ltx && !/^(error|cancelled)/i.test(b.pases._hdr_ltx) && ++n < 300) setTimeout(sigue, 10000); };
+        setTimeout(sigue, 5000); }
+  catch (er) { const m = "HDR with LTX: " + er.message; $("#pEstado").textContent = m; V.aviso(m, 6000); t.disabled = false; }
+}, true);
+
+// ───── HDR Compo in nodes ─────
+// WebGL2 with RGB16F textures: Beauty HDR + Σ gain·max(pass − floor, 0), × 2^EV; shown in sRGB (ACEScg → Rec.709) and, with "false color",
+// anything above 1.0 in magenta. The server writes the final EXR at full resolution with the same values.
+const CH = { gl: null, prog: null, tex: [], capas: [], base: null, ev: 0, falso: false, w: 0, h: 0, b: null, z: 1, tx: 0, ty: 0 };
+const HDR_MAX = 8;
+function chMonta() {
+  if ($("#compoHdr")) return;
+  const d = document.createElement("div");
+  d.className = "visor"; d.id = "compoHdr"; d.hidden = true; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true");
+  d.innerHTML = `<div class="arriba"><div class="t"><span class="v-sub" style="color:rgba(255,255,255,.65)">HDR Compo · nodes · float</span><b id="chNom"></b></div>
+    <button type="button" class="v-btn r chico" id="chCerrar" aria-label="Close">✕</button></div>
+    <div class="chCuerpo"><div class="chNodos" id="chNodos"></div><div class="chLienzo" id="chLienzoCaja"><canvas id="chLienzo"></canvas><span class="zoomtxt" id="chInfo"></span></div></div>`;
+  document.body.appendChild(d);
+  $("#chCerrar").onclick = () => { d.hidden = true; document.body.classList.remove("con-visor"); };
+  const st = document.createElement("style");
+  st.textContent = `#compoHdr .chCuerpo{flex:1;min-height:0;display:grid;grid-template-columns:320px 1fr;gap:14px}
+    @media (max-width:760px){#compoHdr .chCuerpo{grid-template-columns:1fr;grid-template-rows:auto 1fr}}
+    .chNodos{overflow:auto;display:flex;flex-direction:column;gap:0;padding:4px 2px}
+    .chNodo{position:relative;background:rgba(20,22,28,.92);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:10px 12px;display:grid;gap:6px;font-size:12px;color:#ddd}
+    .chNodo b{font-size:12.5px;color:#fff;display:flex;align-items:center;gap:8px}
+    .chNodo.src{border-color:rgba(120,190,255,.45)}.chNodo.out{border-color:rgba(216,242,74,.5)}.chNodo.off{opacity:.45}
+    .chHilo{width:2px;height:16px;margin:0 auto;background:linear-gradient(#5aa9ff,#d8f24a)}
+    .chNodo label{display:grid;grid-template-columns:62px 1fr 44px;align-items:center;gap:6px}
+    .chNodo label output{font:500 11px var(--font-mono,monospace);text-align:right;color:#fff}
+    .chNodo input[type=range]{width:100%}
+    .chLienzo{position:relative;min-height:0;display:grid;place-items:center;overflow:hidden;background:#0b0c0f;border-radius:12px;cursor:grab}
+    .chLienzo canvas{max-width:100%;max-height:100%;transform-origin:0 0}
+    .chBtns{display:flex;gap:6px;flex-wrap:wrap}`;
+  document.head.appendChild(st);
+  const cv = $("#chLienzo"), caja = $("#chLienzoCaja");
+  caja.addEventListener("wheel", (e) => { e.preventDefault(); const r = cv.getBoundingClientRect(); const u = (e.clientX - r.left) / r.width, v = (e.clientY - r.top) / r.height;
+    const z2 = Math.min(32, Math.max(1, CH.z * Math.exp(-e.deltaY * 0.0015))); CH.tx += (u * r.width) * (1 - z2 / CH.z); CH.ty += (v * r.height) * (1 - z2 / CH.z); CH.z = z2; chVista(); }, { passive: false });
+  let pan = null;
+  caja.addEventListener("pointerdown", (e) => { pan = { x: e.clientX, y: e.clientY, tx: CH.tx, ty: CH.ty }; caja.setPointerCapture(e.pointerId); });
+  caja.addEventListener("pointermove", (e) => { if (pan) { CH.tx = pan.tx + e.clientX - pan.x; CH.ty = pan.ty + e.clientY - pan.y; chVista(); } else chLee(e); });
+  caja.addEventListener("pointerup", () => { pan = null; });
+  caja.addEventListener("dblclick", () => { CH.z = 1; CH.tx = CH.ty = 0; chVista(); });
+}
+function chVista() { if (CH.z <= 1.001) { CH.z = 1; CH.tx = CH.ty = 0; } $("#chLienzo").style.transform = `translate(${CH.tx}px,${CH.ty}px) scale(${CH.z})`; }
+const VS = `#version 300 es
+in vec2 p; out vec2 uv; void main(){ uv = vec2(p.x * .5 + .5, .5 - p.y * .5); gl_Position = vec4(p, 0., 1.); }`;
+const FS = `#version 300 es
+precision highp float; in vec2 uv; out vec4 o;
+uniform sampler2D B; uniform sampler2D T[${HDR_MAX}]; uniform float G[${HDR_MAX}]; uniform float P[${HDR_MAX}]; uniform int N; uniform float EV; uniform int FALSO;
+vec3 oetf(vec3 c){ return mix(c * 12.92, 1.055 * pow(c, vec3(1. / 2.4)) - .055, step(.0031308, c)); }
+void main(){
+  vec3 c = texture(B, uv).rgb;
+  ${Array.from({ length: HDR_MAX }, (_, i) => `if (N > ${i}) c += G[${i}] * max(texture(T[${i}], uv).rgb - P[${i}], 0.);`).join("\n  ")}
+  c *= exp2(EV);
+  mat3 A = mat3(1.70505, -.13026, -.02400, -.62179, 1.14080, -.12897, -.08326, -.01055, 1.15297);
+  vec3 r = A * c;
+  vec3 v = oetf(clamp(r, 0., 1.));
+  if (FALSO == 1 && max(r.r, max(r.g, r.b)) > 1.) v = mix(v, vec3(1., .2, .85), .55);
+  o = vec4(v, 1.);
+}`;
+function chGL() {
+  if (CH.gl) return CH.gl;
+  const gl = $("#chLienzo").getContext("webgl2", { preserveDrawingBuffer: true });
+  if (!gl) throw new Error("this browser has no WebGL2");
+  const sh = (t, src) => { const x = gl.createShader(t); gl.shaderSource(x, src); gl.compileShader(x); if (!gl.getShaderParameter(x, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(x)); return x; };
+  const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(pr);
+  if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+  gl.useProgram(pr);
+  const bf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  const lp = gl.getAttribLocation(pr, "p"); gl.enableVertexAttribArray(lp); gl.vertexAttribPointer(lp, 2, gl.FLOAT, false, 0, 0);
+  CH.gl = gl; CH.prog = pr; return gl;
+}
+async function chTextura(u, base) {
+  const r = await fetch(`/renderpasses/exr_bin?u=${encodeURIComponent(u)}&base=${encodeURIComponent(base)}&max=2048`);
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "could not read the EXR");
+  const w = +r.headers.get("X-W"), h = +r.headers.get("X-H"), datos = new Uint16Array(await r.arrayBuffer());
+  const gl = chGL(), t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB16F, w, h, 0, gl.RGB, gl.HALF_FLOAT, datos);
+  for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+  return { t, w, h, datos };
+}
+function chPinta() {
+  const gl = CH.gl; if (!gl || !CH.base) return;
+  const cv = $("#chLienzo"); cv.width = CH.w; cv.height = CH.h; gl.viewport(0, 0, CH.w, CH.h);
+  const U = (n) => gl.getUniformLocation(CH.prog, n);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, CH.base.t); gl.uniform1i(U("B"), 0);
+  const act = CH.capas.filter((c) => c.on && c.tex).slice(0, HDR_MAX);
+  act.forEach((c, i) => { gl.activeTexture(gl.TEXTURE1 + i); gl.bindTexture(gl.TEXTURE_2D, c.tex.t); gl.uniform1i(U(`T[${i}]`), 1 + i);
+    gl.uniform1f(U(`G[${i}]`), c.ganancia); gl.uniform1f(U(`P[${i}]`), c.piso); });
+  gl.uniform1i(U("N"), act.length); gl.uniform1f(U("EV"), CH.ev); gl.uniform1i(U("FALSO"), CH.falso ? 1 : 0);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+const h2f = (x) => { const s = x & 0x8000 ? -1 : 1, e = (x >> 10) & 31, f = x & 1023; return e === 0 ? s * 6.103515625e-5 * (f / 1024) : e === 31 ? (f ? NaN : s * Infinity) : s * 2 ** (e - 15) * (1 + f / 1024); };
+function chLee(e) {   // the value (ACEScg, after gains and EV) of the pixel under the mouse
+  if (!CH.base) return; const r = $("#chLienzo").getBoundingClientRect();
+  const x = Math.floor((e.clientX - r.left) / r.width * CH.w), y = Math.floor((e.clientY - r.top) / r.height * CH.h);
+  if (x < 0 || y < 0 || x >= CH.w || y >= CH.h) return;
+  const i = (y * CH.w + x) * 3, k = 2 ** CH.ev;
+  const v = [0, 1, 2].map((c) => { let s = h2f(CH.base.datos[i + c]); for (const L of CH.capas) if (L.on && L.tex) s += L.ganancia * Math.max(h2f(L.tex.datos[i + c]) - L.piso, 0); return s * k; });
+  $("#chInfo").textContent = `x ${x} y ${y} · ${v.map((a) => a.toFixed(3)).join("  ")}`;
+}
+function chNodos() {
+  const fila = (c, i) => `<div class="chHilo"></div><div class="chNodo${c.on ? "" : " off"}" data-i="${i}">
+      <b><input type="checkbox" class="v-sw" data-k="on"${c.on ? " checked" : ""} aria-label="Use ${esc(c.nom)}"> ＋ ${esc(c.nom)}</b>
+      <label>Gain<input type="range" min="0" max="4" step=".05" value="${c.ganancia}" data-k="ganancia"><output>${c.ganancia.toFixed(2)}</output></label>
+      <label title="Subtracted before adding: removes the lifted black and the tint LTX leaves in the shadows">Floor<input type="range" min="0" max=".3" step=".005" value="${c.piso}" data-k="piso"><output>${c.piso.toFixed(3)}</output></label>
+      ${c.tex ? "" : `<span class="v-sub">${c.error ? esc(c.error) : "loading…"}</span>`}</div>`;
+  $("#chNodos").innerHTML = `<div class="chNodo src"><b>Beauty HDR · ACEScg</b><span class="v-sub">LTX 2.5 · the base of the comp</span></div>`
+    + CH.capas.map(fila).join("")
+    + `<div class="chHilo"></div><div class="chNodo"><b>Exposure</b>
+        <label>EV<input type="range" min="-8" max="4" step=".25" value="${CH.ev}" id="chEv"><output>${CH.ev.toFixed(2)}</output></label>
+        <label style="grid-template-columns:auto 1fr"><input type="checkbox" class="v-sw" id="chFalso"${CH.falso ? " checked" : ""}> <span>False color: magenta = above 1.0</span></label></div>
+      <div class="chHilo"></div><div class="chNodo out"><b>Output · EXR</b><div class="chBtns"><button type="button" class="v-btn chico" id="chGuardar">Save EXR</button><span class="v-sub" id="chMsg"></span></div></div>`;
+  $("#chNodos").querySelectorAll(".chNodo[data-i]").forEach((n) => n.addEventListener("input", (e) => {
+    const c = CH.capas[+n.dataset.i], k = e.target.dataset.k; if (!k) return;
+    if (k === "on") { c.on = e.target.checked; n.classList.toggle("off", !c.on); if (c.on && !c.tex) chCarga(c); }
+    else { c[k] = +e.target.value; e.target.nextElementSibling.textContent = c[k].toFixed(k === "piso" ? 3 : 2); }
+    chPinta(); }));
+  $("#chEv").oninput = (e) => { CH.ev = +e.target.value; e.target.nextElementSibling.textContent = CH.ev.toFixed(2); chPinta(); };
+  $("#chFalso").onchange = (e) => { CH.falso = e.target.checked; chPinta(); };
+  $("#chGuardar").onclick = async () => { $("#chMsg").textContent = "Saving…";
+    try { const r = await j("/renderpasses/compo_hdr", { base: CH.b.exr.beauty_hdr, ev: CH.ev, capas: CH.capas.map((c) => ({ u: c.u, ganancia: c.ganancia, piso: c.piso, on: c.on })) });
+          $("#chMsg").innerHTML = `<a href="${esc(r.url)}" download>comp_hdr.exr ↓</a> · p99.9 ${r.p999} · ${r.sobre_1} % above 1`; }
+    catch (er) { $("#chMsg").textContent = er.message; } };
+}
+async function chCarga(c) { try { c.tex = await chTextura(c.u, CH.b.exr.beauty_hdr); } catch (e) { c.error = e.message; c.on = false; } chNodos(); chPinta(); }
+async function abreCompo(b) {
+  chMonta(); $("#compoHdr").hidden = false; document.body.classList.add("con-visor"); $("#chNom").textContent = b.nombre;
+  CH.b = b; CH.z = 1; CH.tx = CH.ty = 0; chVista();
+  // the passes with HDR (LTX or gain); specular and reflections from the same editor overlap: by default only highlights + reflections +
+  // emission are on (pass keys may come in Spanish or English, so both are matched)
+  CH.capas = (b.hdr_pases || []).filter((k) => b.exr[k]).map((k) => ({ nom: nomPase(k).replace(/^AI /, ""), u: b.exr[k], ganancia: 1, piso: /hdr_ltx/.test(b.exr[k]) ? 0.02 : 0,
+    on: /Brillos|Reflejos|Emisión|Highlights|Reflections|Emission/.test(k) && /Klein/.test(k), tex: null }));
+  chNodos();
+  try { CH.base = await chTextura(b.exr.beauty_hdr, b.exr.beauty_hdr); CH.w = CH.base.w; CH.h = CH.base.h; chPinta(); }
+  catch (e) { $("#chInfo").textContent = e.message; return; }
+  for (const c of CH.capas.filter((c) => c.on)) await chCarga(c);
+}
+$("#pRes").addEventListener("click", (ev) => {
+  const t = ev.target.closest("button[data-compo]"); if (!t || !PULT) return;
+  ev.stopPropagation(); const b = PULT.bgs.find((x) => x.nombre === t.dataset.compo); if (b) abreCompo(b);
+}, true);
+
+// Upscale passes to 4K (all of a plate, or one by one)
+$("#pRes").addEventListener("click", async (ev) => {
+  const uno = ev.target.closest("button[data-esc]"), todos = ev.target.closest("button[data-esc-todos]");
+  if (!uno && !todos) return;
+  ev.stopPropagation();
+  const urls = uno ? [uno.dataset.esc] : [...todos.closest(".bg").querySelectorAll("button[data-esc]")].map((x) => x.dataset.esc);
+  if (!urls.length) { $("#pEstado").textContent = "All passes of this plate are already 4K."; return; }
+  const b = uno || todos; b.disabled = true;
+  try { const r = await j("/renderpasses/escalar", { urls });
+        $("#pEstado").textContent = `Upscaling ${r.trabajos} pass(es) to 4K: ${r.seedvr2} with SeedVR2 and ${r.limpio} with clean scaling (data). They show up as “4K ↗” when done.`;
+        // refresh every 8 s until the requested 4K passes appear (or ~20 min)
+        const cuenta = () => (PULT && PULT.bgs ? PULT.bgs.reduce((s, x) => s + Object.keys(x.pases_4k || {}).length, 0) : 0);
+        const meta = cuenta() + urls.length; let n = 0;
+        const sigue = async () => { await verPases(); if (cuenta() < meta && ++n < 150) setTimeout(sigue, 8000); };
+        firmaP = ""; setTimeout(sigue, 4000); }
+  catch (er) { $("#pEstado").textContent = er.message; b.disabled = false; }
+}, true);
+
+// pass viewer: step through the passes of a plate, + A/B comparer: the pass on top, the Beauty or the Original under the line on the
+// left; the wipe follows the mouse. C cycles None → Beauty → Original.
+const PV = { lista: [], i: 0, volver: null, ref: { beauty: "", original: "" }, con: "beauty", x: 50, modo: "cortina" };
+const pv = document.createElement("div");
+pv.id = "pVisor"; pv.hidden = true; pv.setAttribute("role", "dialog"); pv.setAttribute("aria-modal", "true");
+pv.innerHTML = `<div class="pv-barra"><button type="button" class="v-btn chico" data-pv="-1" aria-label="Previous pass">‹</button>
+  <b id="pvNom"></b><span class="v-sub" id="pvN"></span>
+  <div class="v-pista" id="pvCon" role="group" aria-label="Compare with"><button type="button" value="" aria-pressed="false">No compare</button><button type="button" value="beauty" aria-pressed="true">vs Beauty</button><button type="button" value="original" aria-pressed="false">vs Original</button></div>
+  <div class="v-pista" id="pvModo" role="group" aria-label="Mode"><button type="button" value="cortina" aria-pressed="true">Wipe</button><button type="button" value="lado" aria-pressed="false">Side by side</button></div>
+  <button type="button" class="v-btn chico pri" id="pvPlx" hidden data-tip="The plate's parallax planes (front, mid, far, background, with occluded areas already filled): move the mouse over it and the camera moves without holes">View parallax</button>
+  <button type="button" class="v-btn chico" id="pvTres" hidden data-tip="Like in Nuke: each pixel goes to the 3D point of the P (Position) pass and a moving camera re-shoots it. Checks that P works for parallax (with holes where there is no information; the clean result is “View parallax”)">Test P in 3D</button>
+  <a class="v-btn chico" id="pvAbrir" target="_blank" rel="noopener">Open file ↗</a>
+  <button type="button" class="v-btn chico" data-pv="1" aria-label="Next pass">›</button>
+  <button type="button" class="v-btn chico" id="pvX" aria-label="Close (Esc)">✕</button></div>
+  <div class="pv-lienzo" id="pvLienzo"><div class="pv-caja" id="pvCaja"><img id="pvImg" alt="" draggable="false"><img id="pvRef" alt="" draggable="false"><i class="pv-linea"></i>
+    <span class="pv-et izq" id="pvEtRef"></span><span class="pv-et der" id="pvEtPase">Pass</span></div></div>`;
+document.body.appendChild(pv);
+const pvEstilo = document.createElement("style");
+pvEstilo.textContent = `#pVisor{position:fixed;inset:0;z-index:50;background:rgba(5,6,9,.94);display:flex;flex-direction:column}
+#pVisor[hidden]{display:none}#pVisor .pv-barra{display:flex;align-items:center;gap:10px;padding:12px 16px;flex-wrap:wrap}
+#pVisor .pv-barra b{font-size:15px}#pVisor .pv-barra #pvPlx{margin-left:auto}#pVisor .pv-barra #pvPlx[hidden]+#pvTres{margin-left:auto}#pVisor .pv-barra #pvTres[hidden]+#pvAbrir{margin-left:auto}
+#pVisor .pv-lienzo{flex:1;display:grid;place-items:center;min-height:0;padding:0 16px 16px}
+#pVisor .pv-lienzo{overflow:hidden}
+#pVisor .pv-caja{position:relative;display:block;--x:50%;touch-action:none;cursor:ew-resize;line-height:0;user-select:none;-webkit-user-select:none}
+#pVisor .pv-caja img,#pVisor .pv-caja i,#pVisor .pv-caja span{pointer-events:none;-webkit-user-drag:none}   /* the box handles dragging, not the image */
+#pVisor #pvImg{display:block;width:100%;height:100%;object-fit:contain;border-radius:8px}
+#pVisor #pvImg.alfa{background:repeating-conic-gradient(#2a2d35 0 25%,#1a1c22 0 50%) 0 0/16px 16px}
+#pVisor #pvRef{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;border-radius:8px;clip-path:inset(0 calc(100% - var(--x)) 0 0)}
+#pVisor .pv-linea{position:absolute;top:0;bottom:0;left:var(--x);width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 6px rgba(0,0,0,.6)}
+#pVisor .pv-et{position:absolute;top:10px;max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:3px 8px;border-radius:99px;background:rgba(0,0,0,.6);color:#fff;font:600 11px system-ui;line-height:1.4;letter-spacing:.04em;text-transform:uppercase}
+#pVisor .pv-et.izq{left:10px}#pVisor .pv-et.der{right:10px}
+#pVisor .pv-caja.lado{display:grid;grid-template-columns:1fr 1fr;gap:8px;cursor:default}
+#pVisor .pv-caja.lado #pvRef{position:static;width:100%;height:100%;object-fit:contain;clip-path:none;order:-1}
+#pVisor .pv-caja.lado #pvImg{object-fit:contain}#pVisor .pv-caja.lado .pv-linea{display:none}
+#pVisor .pv-caja.lado .pv-et.der{left:calc(50% + 14px);right:auto}
+#pVisor .pv-caja.solo #pvRef,#pVisor .pv-caja.solo .pv-linea,#pVisor .pv-caja.solo .pv-et{display:none}#pVisor .pv-caja.solo{cursor:default}`;
+document.head.appendChild(pvEstilo);
+function pvMuestra() {
+  const it = PV.lista[PV.i]; if (!it) return;
+  $("#pvImg").src = it.src; $("#pvImg").className = it.alfa ? "alfa" : ""; $("#pvNom").textContent = it.nom;
+  $("#pvN").textContent = `${PV.i + 1} of ${PV.lista.length}`; $("#pvAbrir").href = it.src; $("#pvTres").hidden = true;   // P alone leaves holes; "View parallax" with MoGe projection is the clean preview
+  const bgP = PULT && PULT.bgs.find((x) => x.nombre === PV.bg); $("#pvPlx").hidden = !(bgP && (bgP.paralaje || []).length);
+  const ref = PV.con && PV.ref[PV.con], mismo = ref && ref === it.src;   // Beauty vs itself compares nothing
+  $("#pvCaja").classList.toggle("solo", !ref || mismo);
+  $("#pvCaja").classList.toggle("lado", !!ref && !mismo && PV.modo === "lado");
+  // each side is labeled with what it shows
+  if (ref && !mismo) { $("#pvRef").src = ref; $("#pvEtRef").textContent = PV.con === "beauty" ? "Beauty · " + nombreMotor($("#pMotor").value) : "Original"; }
+  $("#pvEtPase").textContent = it.nom.split(" · ")[0].startsWith("AI ") ? it.nom.replace(/^AI /, "") : it.nom.split(" · ")[0];
+  $("#pvCaja").style.setProperty("--x", PV.x + "%");
+  if ($("#pvImg").complete) pvEncaja();
+  document.querySelectorAll("#pvCon button").forEach((b) => b.setAttribute("aria-pressed", b.value === PV.con));
+}
+document.querySelectorAll("#pvCon button").forEach((b) => b.onclick = (ev) => { ev.stopPropagation(); PV.con = b.value; pvMuestra(); });
+document.querySelectorAll("#pvModo button").forEach((b) => b.onclick = (ev) => { ev.stopPropagation(); PV.modo = b.value;
+  document.querySelectorAll("#pvModo button").forEach((x) => x.setAttribute("aria-pressed", x === b)); pvMuestra(); });
+// the box is sized in px so the whole image fits the canvas; dragging is handled by the box (images have no pointer events or drag).
+function pvEncaja() {
+  const im = $("#pvImg"), L = $("#pvLienzo").getBoundingClientRect(); if (!im.naturalWidth || !L.width) return;
+  const lado = $("#pvCaja").classList.contains("lado"), ancho = lado ? (L.width - 40) / 2 : L.width - 32;   // side by side: two images, 8 px apart
+  const k = Math.min(ancho / im.naturalWidth, (L.height - 16) / im.naturalHeight), w = Math.round(im.naturalWidth * k);
+  $("#pvCaja").style.width = (lado ? 2 * w + 8 : w) + "px"; $("#pvCaja").style.height = Math.round(im.naturalHeight * k) + "px";
+}
+$("#pvImg").addEventListener("load", pvEncaja); window.addEventListener("resize", pvEncaja);
+// the wipe FOLLOWS THE MOUSE without grabbing anything (finger on touch screens), plus "Side by side" mode.
+{ const caja = $("#pvCaja");
+  const mueve = (ev) => { if (caja.classList.contains("solo") || caja.classList.contains("lado")) return; const r = caja.getBoundingClientRect();
+    PV.x = Math.max(0, Math.min(100, ((ev.clientX - r.left) / r.width) * 100)); caja.style.setProperty("--x", PV.x + "%"); };
+  caja.addEventListener("dragstart", (ev) => ev.preventDefault());
+  caja.addEventListener("pointermove", mueve);
+  caja.addEventListener("pointerdown", (ev) => { ev.preventDefault(); mueve(ev); }); }
+function pvCierra() { pv.hidden = true; if (PV.volver && document.contains(PV.volver)) PV.volver.focus(); }
+$("#pRes").addEventListener("click", (ev) => {
+  const bt = ev.target.closest("button.pase"); if (!bt) return;
+  const todos = [...bt.closest(".bg").querySelectorAll("button.pase")];   // steps between the passes of the SAME plate
+  PV.lista = todos.map((x) => ({ src: x.dataset.src, nom: x.dataset.nom, alfa: !!x.dataset.alfa })); PV.i = todos.indexOf(bt); PV.volver = bt;
+  const art = bt.closest(".bg"); PV.ref = { beauty: art.dataset.beauty || "", original: art.dataset.original || "" }; PV.depth = art.dataset.depth || ""; PV.pos = art.dataset.pos || ""; PV.bg = art.dataset.bg || "";
+  pv.hidden = false; pvMuestra(); $("#pvX").focus();
+});
+pv.addEventListener("click", (ev) => {
+  const d = ev.target.closest("[data-pv]");
+  if (d) { PV.i = (PV.i + Number(d.dataset.pv) + PV.lista.length) % PV.lista.length; pvMuestra(); }
+  // any click outside the image and the controls closes the viewer
+  else if (ev.target.id === "pvX" || !ev.target.closest("img,.pv-caja,button,a,input,select,.v-pista,#pvNom,#pvN")) pvCierra();
+});
+document.addEventListener("keydown", (ev) => {
+  if (pv.hidden || !$("#plx").hidden) return;                 // with the 3D view open, Esc closes only the 3D view
+  if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); pvCierra(); }
+  else if (ev.key === "c" || ev.key === "C") { ev.preventDefault(); ev.stopPropagation(); PV.con = { "": "beauty", beauty: "original", original: "" }[PV.con]; pvMuestra(); }
+  else if (ev.key === "ArrowRight" || ev.key === "ArrowLeft") { ev.preventDefault(); ev.stopPropagation(); PV.i = (PV.i + (ev.key === "ArrowRight" ? 1 : -1) + PV.lista.length) % PV.lista.length; pvMuestra(); }
+}, true);
+// Extract passes: for the whole batch (③) or ONE plate (button on each plate in ②). Uses the engine and the passes checked in ③.
+async function sacarPases(b, bgs) {
+  b.disabled = true;
+  try {
+    const base = { lote: $("#lotes").value, motor: $("#pMotor").value, bgs };
+    // only what is checked (the server treats an empty list as "all")
+    const datos = [...document.querySelectorAll("#pPases input:checked")].map((x) => x.value);
+    const ia = [...document.querySelectorAll("#pIAlista input:checked")].map((x) => x.value);
+    if (!datos.length && !ia.length) throw new Error("Check at least one pass.");
+    const r = datos.length ? await j("/renderpasses/pases", { ...base, capas: $("#pCapas").value, pases: datos, cripto_guia: $("#pCripto").value.trim() }) : { trabajos: 0, avisos: [] };
+    let n = r.trabajos, av = r.avisos || [];
+    if (ia.length) { const r2 = await j("/renderpasses/pases_ia", { ...base, pases: ia }); n += r2.trabajos; av = av.concat(r2.avisos || []); }
+    $("#pEstado").textContent = `${n} jobs queued${bgs ? " (" + bgs.length + " BG)" : ""} with ${nombreMotor(base.motor)}. ` + av.join(" ");
+    firmaP = ""; setTimeout(verPases, 3000);
+  } catch (er) { $("#pEstado").textContent = er.message; }
+  b.disabled = false;
+}
+$("#pLanzar").onclick = () => sacarPases($("#pLanzar"), null);
+$("#pCancelar").onclick = async () => {
+  const lote = $("#lotes").value; if (!lote || !confirm("Cancel the queued jobs of this batch?")) return;
+  try { const r = await j("/renderpasses/cancelar", { lote }); $("#pEstado").textContent = `Cancelled: ${r.quitados} queued${r.cortado ? " plus the running job" : ""}.`; }
+  catch (er) { $("#pEstado").textContent = "Could not cancel: " + er.message; }
+};
+$("#res").addEventListener("click", (ev) => {
+  const t = ev.target.closest("button[data-pases]"); if (!t) return;
+  sacarPases(t, [t.dataset.pases]); $("#t3").closest("section").scrollIntoView({ behavior: "smooth", block: "start" });
+});
+function pinta() {
+  if (!E.bgs.length) { $("#res").innerHTML = '<div class="vacio">This batch has no plates.</div>'; return; }
+  $("#res").innerHTML = E.bgs.map((b, i) => `<article class="bg">
+    <div class="h"><b${b.prompt ? ` class="conPrompt" tabindex="0" data-tip="${esc("What Qwen asked for on this plate: " + b.prompt.replace(/^.*?(Keep exactly:)/i, "$1"))}"` : ""}>${esc(b.nombre)}${b.prompt ? ` <span class="pq">${b.fijado ? "✦ pinned prompt" : "✦ Qwen prompt"}</span>` : ""}</b><span class="lacc">${b.hoja ? `<a class="lico" href="${esc(b.hoja)}" target="_blank" rel="noopener" data-tip="Contact sheet for this plate" aria-label="Contact sheet for this plate">▦</a>` : ""}<button type="button" class="lfant" data-pases="${esc(b.stem)}" data-tip="With the engine and passes checked in ③">Passes for this plate</button></span></div>
+    <div class="rejilla">
+      <figure class="cuadro orig"><button type="button" data-bg="${i}" data-vista="original" aria-label="View original of ${esc(b.nombre)}"><img src="${esc(b.original)}" loading="lazy" alt=""></button><figcaption>Original</figcaption></figure>
+      ${E.motores.map((m) => b.salidas[m]
+        ? `<figure class="cuadro"><button type="button" data-bg="${i}" data-vista="${esc(m)}" aria-label="View ${esc(nombreMotor(m))} of ${esc(b.nombre)}"><img src="${esc(b.salidas[m])}" loading="lazy" alt=""></button><figcaption>${esc(nombreMotor(m))}${(b.sin_color || []).includes(m) ? ` · <span class="pq" data-tip="This engine changed the framing: the original color would land in the wrong place, so it is left as is. For MOSS use “MOSS · depth + color”">no original color</span>` : ""}${(b.salidas_4k || {})[m] ? ` · <a href="${esc(b.salidas_4k[m])}" target="_blank" rel="noopener">${esc(m === "moss_prof" && /8K/.test(b.mosaico || "") ? "8K" : "4K")} ↗</a>` : ""}${m === "moss_prof" ? mosaicoBtns(b) : ""}</figcaption></figure>`
+        : `<figure class="cuadro"><div class="cola"><span>queued…</span></div><figcaption>${esc(nombreMotor(m))}</figcaption></figure>`).join("")}
+    </div></article>`).join("");
+}
+
+// ---- viewer (A/B with the original, arrows between engines and plates) ----
+const Vz = { bg: 0, vista: "original", x: 50, modo: "cortina" };
+// the 4K/8K versions (tiled MOSS, SeedVR2) can also be compared against the original, with zoom
+const vistas = (b) => ["original", ...E.motores.flatMap((m) => [b.salidas[m] ? m : null, (b.salidas_4k || {})[m] ? m + "@4k" : null]).filter(Boolean)];
+const srcVista = (b, v) => (v === "original" ? b.original : v.endsWith("@4k") ? b.salidas_4k[v.slice(0, -3)] : b.salidas[v]);
+$("#res").addEventListener("click", (ev) => { const t = ev.target.closest("button[data-bg]"); if (!t) return; abre(+t.dataset.bg, t.dataset.vista, t); });
+let volverA = null;
+function abre(bg, vista, desde) {
+  volverA = desde || null; Vz.bg = bg; Vz.vista = vista;
+  $("#visor").hidden = false; document.body.classList.add("con-visor"); muestra(); $("#vCerrar").focus();
+}
+function cierra() { $("#visor").hidden = true; document.body.classList.remove("con-visor"); if (volverA && document.contains(volverA)) volverA.focus(); }
+let zoomBg = -1;
+function muestra() {
+  if (!E || !E.bgs.length) return cierra();
+  if (zoomBg !== Vz.bg && typeof ZM !== "undefined") { zoomBg = Vz.bg; ZM.z = 1; ZM.tx = ZM.ty = 0; pintaZoom(); }
+  Vz.bg = (Vz.bg + E.bgs.length) % E.bgs.length;
+  const b = E.bgs[Vz.bg], vs = vistas(b), ab = $("#vAB").checked;
+  if (!vs.includes(Vz.vista)) Vz.vista = vs[0];
+  if (ab && Vz.vista === "original" && vs.length > 1) Vz.vista = vs[1];
+  $("#vCuenta").textContent = `BG ${Vz.bg + 1} of ${E.bgs.length} · batch ${fechaLote(E.lote)}`; $("#vNombre").textContent = b.nombre;
+  const src = srcVista(b, Vz.vista);
+  if ($("#vAbajo").getAttribute("src") !== src) $("#vAbajo").src = src;
+  if ($("#vArriba").getAttribute("src") !== b.original) $("#vArriba").src = b.original;
+  $("#lienzo").classList.toggle("ab", ab && Vz.vista !== "original");
+  $("#lienzo").classList.toggle("lado", ab && Vz.vista !== "original" && Vz.modo === "lado"); proporcion();
+  $("#lienzo").style.setProperty("--x", Vz.x + "%");
+  $("#vRotulo").textContent = Vz.vista === "original" ? "Original" : nombreMotor(Vz.vista);
+  const p = $("#vMotores");
+  p.innerHTML = vs.map((v) => `<button type="button" value="${esc(v)}" aria-pressed="${v === Vz.vista}"${ab && v === "original" ? " disabled" : ""}>${esc(v === "original" ? "Original" : nombreMotor(v))}</button>`).join("");
+  V.pista(p);
+}
+function proporcion() { const i = $("#vArriba"); if (i.naturalWidth) { const k = $("#lienzo").classList.contains("lado") ? 2 : 1, r = k * i.naturalWidth / i.naturalHeight;
+  $("#lienzo").style.setProperty("--ar", `${k * i.naturalWidth}/${i.naturalHeight}`); $("#lienzo").style.setProperty("--ar-n", r.toFixed(4)); } }
+$("#vArriba").addEventListener("load", proporcion);
+$("#vMotores").addEventListener("v-elige", (ev) => { Vz.vista = ev.detail.valor; muestra(); });
+$("#vAB").addEventListener("change", muestra);
+$("#vCerrar").onclick = cierra;
+$("#vAnt").onclick = () => { Vz.bg--; muestra(); };
+$("#vSig").onclick = () => { Vz.bg++; muestra(); };
+function paso(d) { const vs = vistas(E.bgs[Vz.bg]).filter((v) => !($("#vAB").checked && v === "original")); if (!vs.length) return;
+  Vz.vista = vs[(vs.indexOf(Vz.vista) + d + vs.length) % vs.length]; muestra(); }
+document.addEventListener("keydown", (ev) => {
+  if ($("#visor").hidden) return;
+  if (ev.key === "Escape") { ev.preventDefault(); cierra(); }
+  else if (ev.key === "ArrowRight") { ev.preventDefault(); paso(1); }
+  else if (ev.key === "ArrowLeft") { ev.preventDefault(); paso(-1); }
+  else if (ev.key === "ArrowDown" || ev.key === "PageDown") { ev.preventDefault(); Vz.bg++; muestra(); }
+  else if (ev.key === "ArrowUp" || ev.key === "PageUp") { ev.preventDefault(); Vz.bg--; muestra(); }
+  else if (ev.key === "c" || ev.key === "C") { $("#vAB").checked = !$("#vAB").checked; muestra(); }
+  else if (ev.key === "Tab") { const f = [...$("#visor").querySelectorAll("button:not([disabled]),input")]; const i = f.indexOf(document.activeElement);
+    if (ev.shiftKey && i <= 0) { ev.preventDefault(); f[f.length - 1].focus(); } else if (!ev.shiftKey && i === f.length - 1) { ev.preventDefault(); f[0].focus(); } }
+});
+// the A/B wipe FOLLOWS THE MOUSE anywhere on the image (no grabbing), plus "Side by side" mode.
+const lz = $("#lienzo");
+const mueveCorte = (ev) => { if (!lz.classList.contains("ab") || lz.classList.contains("lado")) return; const r = lz.getBoundingClientRect();
+  Vz.x = Math.max(0, Math.min(100, ((ev.clientX - r.left) / r.width) * 100)); lz.style.setProperty("--x", Vz.x + "%"); };
+// zoom: z (1–32) and offset (tx, ty) as fractions of the layer; both images share the same values
+const ZM = { z: 1, tx: 0, ty: 0, pan: null };
+const pintaZoom = () => {
+  ZM.tx = Math.min(0, Math.max(1 - ZM.z, ZM.tx)); ZM.ty = Math.min(0, Math.max(1 - ZM.z, ZM.ty));
+  lz.style.setProperty("--z", ZM.z); lz.style.setProperty("--tx", ZM.tx); lz.style.setProperty("--ty", ZM.ty);
+  lz.classList.toggle("zoom", ZM.z > 1.001); $("#vZoom").textContent = Math.round(ZM.z * 100) + " %";
+};
+const capaBajo = (ev) => { const cs = [...lz.querySelectorAll(".capa")].map((c) => c.getBoundingClientRect());
+  return cs.find((r) => ev.clientX >= r.left && ev.clientX <= r.right) || cs[0]; };
+lz.addEventListener("wheel", (ev) => {
+  ev.preventDefault();
+  const r = capaBajo(ev), u = (ev.clientX - r.left) / r.width, v = (ev.clientY - r.top) / r.height;
+  const z2 = Math.min(32, Math.max(1, ZM.z * Math.exp(-ev.deltaY * 0.0015)));
+  ZM.tx = u - (u - ZM.tx) * (z2 / ZM.z); ZM.ty = v - (v - ZM.ty) * (z2 / ZM.z); ZM.z = z2; pintaZoom();
+}, { passive: false });
+lz.addEventListener("dblclick", () => { ZM.z = 1; ZM.tx = ZM.ty = 0; pintaZoom(); });
+lz.addEventListener("pointermove", (ev) => {
+  if (ZM.pan) { const r = capaBajo(ev); ZM.tx = ZM.pan.tx + (ev.clientX - ZM.pan.x) / r.width; ZM.ty = ZM.pan.ty + (ev.clientY - ZM.pan.y) / r.height; pintaZoom(); return; }
+  mueveCorte(ev); });
+lz.addEventListener("pointerdown", (ev) => { ev.preventDefault();
+  if (ZM.z > 1.001) { ZM.pan = { x: ev.clientX, y: ev.clientY, tx: ZM.tx, ty: ZM.ty }; lz.classList.add("paneo"); lz.setPointerCapture(ev.pointerId); }
+  else mueveCorte(ev); });
+const sueltaPan = () => { ZM.pan = null; lz.classList.remove("paneo"); };
+lz.addEventListener("pointerup", sueltaPan); lz.addEventListener("pointercancel", sueltaPan);
+lz.addEventListener("dragstart", (ev) => ev.preventDefault());
+document.querySelectorAll("#vModo button").forEach((b) => b.onclick = () => {
+  Vz.modo = b.value; document.querySelectorAll("#vModo button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  if (b.value === "lado" && !$("#vAB").checked) $("#vAB").checked = true;   // side by side is always against the original
+  muestra(); });
+$("#visor").addEventListener("click", (ev) => { if (!ev.target.closest(".lienzo,button,a,input,select,label,.v-pista,.mandos,.t")) cierra(); });
+
+inicio();
+</script>
+<div class="soltar" aria-hidden="true"><div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M7.5 11.5 12 16l4.5-4.5"/><path d="M4.5 15v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/></svg>
+  <b>Drop to render</b><span>They are uploaded and selected; “Render” sends them to the enabled engines</span></div></div>
+<div class="plx" id="plx" hidden role="dialog" aria-modal="true" aria-label="Parallax"><div class="caja" id="plxCaja"></div>
+  <div class="pie"><label id="plxProyL" hidden data-tip="On: each plane is projected onto the MoGe-2 geometry (like Project3D in Nuke). Off: flat cards at their distance"><input type="checkbox" class="v-sw" id="plxProy" checked> MoGe projection</label><label id="plxEstirarL" hidden data-tip="Off, like PositionToPoints in Nuke: where the camera sees what was occluded there is a hole (no information). On: the edge is stretched to cover it"><input type="checkbox" class="v-sw" id="plxEstirar" checked> Stretch edges</label><label data-tip="With the mouse over it, the camera follows the mouse; when the mouse leaves, it moves on its own again"><input type="checkbox" class="v-sw" id="plxAuto" checked> Auto move</label><span>Strength</span><input type="range" id="plxFuerza" min="0" max="100" value="45"><span id="plxInfo"></span><button type="button" class="v-btn r chico" id="plxCerrar" aria-label="Close">✕</button></div></div>
+</body>
+</html>

@@ -1,0 +1,200 @@
+/* © 2026 NeuroPixel+ · Vidrio — a small liquid-glass UI kit.
+   Three materials (A smoked black · B milky light · C clear with lens), few large pieces, always a SCENE behind, one lit accent, two-level type.
+   Values come from tokens.css (the accent is mixed with color-mix so it can be changed in one place): no loose colors here.
+   All classes start with "v-". */
+
+/* ---------- base ---------- */
+.v-app{font-family:var(--font-sans);font-size:var(--t-cuerpo-size,15px);line-height:var(--t-cuerpo-lh,22px);color:var(--tinta);-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+.v-app *{box-sizing:border-box}
+.v-app button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}
+
+/* ---------- the scene: there is always something behind the glass (the latest render, or the default backdrop) ---------- */
+.v-fondo{position:fixed;inset:0;z-index:0;pointer-events:none;background:var(--fondo)}
+.v-fondo::before{content:"";position:absolute;inset:-4%;background:var(--escena,url("fondo_tela.jpg")) center/cover no-repeat;filter:saturate(115%)}
+.v-fondo.nada::before{display:none}
+.v-fondo.render::before{filter:blur(28px) saturate(140%) brightness(.62);transform:scale(1.08)}
+.v-fondo::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.35),rgba(0,0,0,0) 30%,rgba(0,0,0,0) 62%,rgba(0,0,0,.55))}
+[data-theme="claro"] .v-fondo::before{background-image:var(--escena-claro,var(--escena,url("fondo_claro.jpg")))}
+[data-theme="claro"] .v-fondo.render::before{filter:blur(28px) saturate(120%) brightness(1.35) contrast(.7)}
+[data-theme="claro"] .v-fondo::after{background:linear-gradient(180deg,rgba(255,255,255,.35),rgba(255,255,255,0) 40%)}
+
+/* ---------- the three materials ---------- */
+.v-placa,.v-lente{position:relative;isolation:isolate}
+.v-placa::before,.v-lente::before,.v-btn::before,.v-tabs::before,.v-compo::before,.v-pista::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;z-index:2;
+  background:linear-gradient(150deg,var(--canto),var(--canto-suave) 22%,transparent 48%,transparent 66%,var(--canto-suave) 82%,var(--canto));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+/* A · smoked black: plates, tiles, the progress widget */
+.v-placa{border-radius:var(--r-placa);padding:var(--e-5);background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.01) 40%,rgba(255,255,255,.02)),var(--vidrio-a);
+  -webkit-backdrop-filter:var(--desenfoque-a);backdrop-filter:var(--desenfoque-a);box-shadow:var(--bisel-a),var(--sombra-placa)}
+/* B · milky light: physical pieces (light bar, white button, cards in the light theme) */
+.v-placa.clara{background:linear-gradient(180deg,rgba(255,255,255,.4),rgba(255,255,255,0) 60%),var(--vidrio-b);color:#14151b;
+  -webkit-backdrop-filter:var(--desenfoque-b);backdrop-filter:var(--desenfoque-b);box-shadow:var(--bisel-b),var(--sombra-clara)}
+/* C · clear with lens: controls over a video or an image; it bends what is behind at the edge */
+.v-lente{border-radius:var(--r-placa);background:var(--vidrio-c);-webkit-backdrop-filter:var(--desenfoque-c);backdrop-filter:var(--desenfoque-c);box-shadow:var(--bisel-c),0 16px 30px -16px rgba(0,0,0,.45)}
+html.v-con-lente .v-lente{-webkit-backdrop-filter:url(#vLente) var(--desenfoque-c);backdrop-filter:url(#vLente) var(--desenfoque-c)}
+.v-lente.r{border-radius:50%}
+.v-lente,.v-lente .v-btn{color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.35)}   /* over an image, text is always white */
+
+/* ---------- two-level type (grey label + white value) ---------- */
+.v-et{font-family:var(--font-sans);font-size:var(--t-etiqueta-size,11px);line-height:var(--t-etiqueta-lh,14px);font-weight:var(--t-etiqueta-peso,600);letter-spacing:var(--t-etiqueta-esp,.12em);text-transform:uppercase;color:var(--tinta-3)}
+.v-et b{color:var(--tinta);font-weight:600}
+.v-sub{font-size:var(--t-sub-size,13px);line-height:var(--t-sub-lh,18px);color:var(--tinta-2)}
+.v-titulo{font-size:var(--t-titulo-size,20px);line-height:var(--t-titulo-lh,26px);font-weight:var(--t-titulo-peso,600);letter-spacing:var(--t-titulo-esp,-.01em);margin:0}
+.v-titulo-xl{font-size:var(--t-titulo-xl-size,34px);line-height:var(--t-titulo-xl-lh,38px);font-weight:var(--t-titulo-xl-peso,600);letter-spacing:var(--t-titulo-xl-esp,-.03em);margin:0;text-wrap:balance}
+
+/* ---------- buttons: thick glass capsule that inflates when pressed (gel) ---------- */
+.v-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:var(--e-2);min-height:48px;padding:0 var(--e-5);border:0;border-radius:var(--r-capsula);
+  font-size:var(--t-cuerpo-size,15px);font-weight:500;color:var(--tinta);white-space:nowrap;
+  background:radial-gradient(120% 90% at 50% -20%,rgba(255,255,255,.16),rgba(255,255,255,0) 60%),linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.02) 50%,rgba(255,255,255,.04)),rgba(0,0,0,.28);
+  -webkit-backdrop-filter:var(--desenfoque-b);backdrop-filter:var(--desenfoque-b);box-shadow:var(--bisel-a),inset 1px 0 0 rgba(120,220,255,.12),inset -1px 0 0 rgba(255,120,200,.1),0 8px 18px -12px rgba(0,0,0,.9);
+  transition:transform var(--t-gel) var(--curva-rebote),box-shadow .2s,background .2s}
+.v-btn:active{transform:scale(1.05);transition-duration:.12s}
+.v-btn:focus-visible{outline:2px solid var(--acento-texto);outline-offset:3px}
+.v-btn:disabled{opacity:.42;transform:none}
+.v-btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.v-btn.r{width:48px;padding:0}.v-btn.r.g{width:56px;min-height:56px}.v-btn.chico{min-height:38px;padding:0 var(--e-4);font-size:13.5px}.v-btn.chico.r{width:38px;padding:0}
+.v-btn.ancho{width:100%}
+/* primary: an accent drop with its glow (one per screen) */
+.v-btn.pri{color:var(--en-acento);font-weight:600;background:radial-gradient(120% 90% at 50% -10%,rgba(255,255,255,.6),rgba(255,255,255,0) 55%),var(--acento);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.8),inset 0 -8px 14px -10px color-mix(in srgb,var(--acento) 35%,rgba(0,0,0,.7)),0 10px 26px -10px color-mix(in srgb,var(--acento) 65%,transparent)}
+.v-btn.pri::before{display:none}
+/* white (material B) */
+.v-btn.blanco{color:#14151b;background:linear-gradient(180deg,rgba(255,255,255,.95),rgba(255,255,255,.7));box-shadow:var(--bisel-b),var(--sombra-clara)}
+/* on / selected */
+.v-btn.on{box-shadow:var(--bisel-a),inset 0 0 0 1px color-mix(in srgb,var(--acento) 45%,transparent),0 0 18px -6px color-mix(in srgb,var(--acento) 60%,transparent);color:var(--acento-texto)}
+
+/* ---------- action chips and filters ---------- */
+.v-chips{display:flex;gap:var(--e-2);overflow-x:auto;scrollbar-width:none;padding-bottom:2px}.v-chips::-webkit-scrollbar{display:none}
+.v-chips .v-btn{flex:none}
+
+/* ---------- segmented control: sunken rail and a glass DROP that stretches to the selected option ---------- */
+.v-pista{position:relative;display:flex;gap:var(--e-1);padding:5px;border-radius:var(--r-capsula);background:var(--hundido);box-shadow:inset 0 1px 3px rgba(0,0,0,.6),0 1px 0 rgba(255,255,255,.06);overflow-x:auto;scrollbar-width:none}
+.v-pista::-webkit-scrollbar{display:none}
+.v-pista>button{position:relative;z-index:1;flex:none;min-height:40px;padding:0 var(--e-4);border:0;border-radius:var(--r-capsula);background:none;font-size:14px;color:var(--tinta-2);transition:color .25s}
+.v-pista>button[aria-pressed="true"]{color:var(--tinta)}
+.v-gota{position:absolute;z-index:0;top:5px;bottom:5px;left:0;width:0;border-radius:var(--r-capsula);pointer-events:none;
+  background:radial-gradient(90% 80% at 50% -10%,rgba(255,255,255,.28),rgba(255,255,255,0) 60%),linear-gradient(180deg,color-mix(in srgb,var(--acento) 24%,transparent),color-mix(in srgb,var(--acento) 8%,transparent));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.4),inset 0 0 0 1px color-mix(in srgb,var(--acento) 40%,transparent),0 0 18px -6px color-mix(in srgb,var(--acento) 55%,transparent);
+  transition:transform var(--t-gota) var(--curva-rebote),width var(--t-gota) var(--curva-rebote)}
+
+/* ---------- "liquid" switch:
+   very dark glass track; round metallic knob; on toggle it STRETCHES, TILTS and BLURS and lands with a bounce;
+   when on it glows LIME GREEN and breathes. No ON/OFF text. The lime is fixed (--sw-lima), it does not follow the accent. ---------- */
+.v-sw{--sw-lima:#d8ff3e;-webkit-appearance:none;appearance:none;flex:none;position:relative;width:50px;height:28px;margin:0;border-radius:var(--r-capsula);cursor:pointer;
+  background:radial-gradient(120% 140% at 50% 0%,rgba(255,255,255,.07),rgba(255,255,255,0) 60%),#0b0b0e;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),inset 0 1px 0 rgba(255,255,255,.14),inset 0 -6px 12px rgba(0,0,0,.7);transition:box-shadow .5s ease}
+.v-sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#fafafa 0,#bdbdc2 38%,#5a5a60 100%);box-shadow:0 2px 6px rgba(0,0,0,.65),inset 0 -2px 3px rgba(0,0,0,.35);
+  transition:left .55s cubic-bezier(.45,1.45,.4,1),background .45s ease,box-shadow .45s ease;animation:vSwVaOff .55s cubic-bezier(.45,1.2,.4,1)}
+.v-sw:checked{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--sw-lima) 38%,transparent),inset -12px 0 16px -10px color-mix(in srgb,var(--sw-lima) 45%,transparent),
+  inset 0 1px 0 rgba(255,255,255,.12),inset 0 -6px 12px rgba(0,0,0,.6),0 0 16px -6px color-mix(in srgb,var(--sw-lima) 50%,transparent)}
+.v-sw:checked::after{left:calc(100% - 25px);
+  background:radial-gradient(circle at 38% 34%,#fbffe8 0,color-mix(in srgb,var(--sw-lima) 55%,#fff) 30%,var(--sw-lima) 62%,color-mix(in srgb,var(--sw-lima) 60%,#000) 100%);
+  box-shadow:0 0 10px 2px color-mix(in srgb,var(--sw-lima) 60%,transparent),0 0 22px 6px color-mix(in srgb,var(--sw-lima) 25%,transparent);
+  animation:vSwVaOn .55s cubic-bezier(.45,1.2,.4,1),vSwRespira 3.2s ease-in-out .6s infinite}
+.v-sw:focus-visible{outline:2px solid var(--sw-lima);outline-offset:3px}
+.v-sw:disabled{opacity:.4}
+@keyframes vSwVaOn{0%{transform:none;filter:blur(.6px)}35%{transform:scaleX(1.35) skewX(-14deg) rotate(-6deg);filter:blur(2.6px)}75%{transform:scaleX(.92) scaleY(1.06);filter:blur(.9px)}100%{transform:none;filter:blur(.6px)}}
+@keyframes vSwVaOff{0%{transform:none;filter:blur(.6px)}35%{transform:scaleX(1.35) skewX(14deg) rotate(6deg);filter:blur(2.6px)}75%{transform:scaleX(.92) scaleY(1.06);filter:blur(.9px)}100%{transform:none;filter:blur(.6px)}}
+@keyframes vSwRespira{0%,100%{box-shadow:0 0 10px 2px color-mix(in srgb,var(--sw-lima) 60%,transparent),0 0 22px 6px color-mix(in srgb,var(--sw-lima) 25%,transparent)}
+  50%{box-shadow:0 0 14px 4px color-mix(in srgb,var(--sw-lima) 75%,transparent),0 0 30px 9px color-mix(in srgb,var(--sw-lima) 34%,transparent)}}
+
+/* ---------- slider: sunken rail, lit filled part and a glass knob (--p is set by vidrio.mjs) ---------- */
+.v-rango{-webkit-appearance:none;appearance:none;width:100%;height:36px;margin:0;background:transparent;cursor:pointer}
+.v-rango::-webkit-slider-runnable-track{height:8px;border-radius:var(--r-capsula);background:linear-gradient(90deg,color-mix(in srgb,var(--acento) 45%,transparent),var(--acento)) 0 0/var(--p,50%) 100% no-repeat,var(--riel);box-shadow:inset 0 1px 2px rgba(0,0,0,.6)}
+.v-rango::-webkit-slider-thumb{-webkit-appearance:none;width:28px;height:28px;margin-top:-10px;border:0;border-radius:50%;
+  background:radial-gradient(circle at 34% 26%,#fff,rgba(255,255,255,.62) 26%,rgba(255,255,255,.2) 60%,rgba(255,255,255,.34));box-shadow:inset 0 0 0 1px rgba(255,255,255,.5),inset 0 -4px 6px rgba(0,0,0,.2),0 4px 10px rgba(0,0,0,.6);
+  transition:transform var(--t-gel) var(--curva-rebote)}
+.v-rango:active::-webkit-slider-thumb{transform:scale(1.2)}
+.v-rango::-moz-range-track{height:8px;border-radius:var(--r-capsula);background:var(--riel)}
+.v-rango::-moz-range-progress{height:8px;border-radius:var(--r-capsula);background:var(--acento)}
+.v-rango::-moz-range-thumb{width:28px;height:28px;border:0;border-radius:50%;background:radial-gradient(circle at 34% 26%,#fff,rgba(255,255,255,.6) 26%,rgba(255,255,255,.2) 60%,rgba(255,255,255,.34));box-shadow:0 4px 10px rgba(0,0,0,.6)}
+.v-campo-rango{display:grid;grid-template-columns:1fr auto;align-items:center;gap:0 var(--e-3)}
+.v-campo-rango .v-rango{grid-column:1/-1}
+.v-campo-rango output{font:600 15px/1 var(--font-sans);font-variant-numeric:tabular-nums}
+
+/* ---------- progress widget: the running render ---------- */
+.v-avance .cab{display:flex;justify-content:space-between;align-items:center;gap:var(--e-2)}
+.v-avance .centro{text-align:center;margin:var(--e-4) 0 var(--e-2)}
+.v-ruta{display:flex;align-items:center;gap:var(--e-3);font-family:var(--font-sans);font-size:var(--t-dato-size,24px);line-height:var(--t-dato-lh,28px);font-weight:var(--t-dato-peso,600);letter-spacing:var(--t-dato-esp,0);font-variant-numeric:tabular-nums}
+.v-riel{flex:1;height:5px;border-radius:5px;background:var(--riel);position:relative}
+.v-riel i{position:absolute;left:0;top:0;bottom:0;width:var(--p,0%);border-radius:5px;background:linear-gradient(90deg,color-mix(in srgb,var(--acento) 30%,transparent),var(--acento));box-shadow:0 0 12px color-mix(in srgb,var(--acento) 70%,transparent);transition:width .6s}
+.v-riel em{position:absolute;left:var(--p,0%);top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:#fff;box-shadow:0 0 0 4px color-mix(in srgb,var(--acento) 25%,transparent),0 0 14px color-mix(in srgb,var(--acento) 90%,transparent);transition:left .6s}
+.v-avance .pie{display:flex;justify-content:space-between;gap:var(--e-2);margin-top:var(--e-2);font-size:13px;color:var(--tinta-2)}
+.v-estado{display:inline-flex;align-items:center;gap:6px;font-weight:500}
+.v-estado::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
+.v-estado.ok{color:var(--ok)}.v-estado.aviso{color:var(--aviso)}.v-estado.error{color:var(--error)}
+
+/* ---------- tiles: title + control on top, image or number below ---------- */
+.v-mosaicos{display:grid;grid-template-columns:1fr 1fr;gap:var(--e-3)}
+.v-mosaico{display:flex;flex-direction:column;min-height:176px;overflow:hidden;text-align:left;border:0;color:inherit}
+.v-mosaico.ancho{grid-column:1/-1}
+.v-mosaico .h{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--e-2)}
+.v-mosaico .h b{display:block;font-size:16px;line-height:21px;font-weight:600}
+.v-mosaico .foto{margin:var(--e-3) calc(-1 * var(--e-5)) calc(-1 * var(--e-5));flex:1;min-height:92px;background:var(--foto) center/cover no-repeat;
+  -webkit-mask:linear-gradient(180deg,transparent,#000 42%);mask:linear-gradient(180deg,transparent,#000 42%)}
+.v-mosaico .num{margin-top:auto;font-family:var(--font-sans);font-size:var(--t-numero-xl-size,44px);line-height:var(--t-numero-xl-lh,44px);font-weight:var(--t-numero-xl-peso,300);letter-spacing:var(--t-numero-xl-esp,-.03em);font-variant-numeric:tabular-nums}
+.v-mosaico .num small{font-size:15px;letter-spacing:0;color:var(--tinta-2)}
+button.v-mosaico{transition:transform .2s}button.v-mosaico:active{transform:scale(.98)}
+
+/* ---------- composer: write and send ---------- */
+.v-compo{position:relative;border-radius:var(--r-hoja);padding:var(--e-4) var(--e-4) var(--e-3);background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.015) 45%),rgba(0,0,0,.3);
+  -webkit-backdrop-filter:var(--desenfoque-b);backdrop-filter:var(--desenfoque-b);box-shadow:var(--bisel-a),var(--sombra-flota)}
+.v-compo textarea{display:block;width:100%;min-height:52px;max-height:40vh;padding:4px 4px var(--e-3);border:0;background:none;color:var(--tinta);font:17px/24px var(--font-sans);resize:none;outline:none}
+.v-compo textarea::placeholder{color:var(--tinta-3)}
+.v-compo .acciones{display:flex;align-items:center;gap:var(--e-2)}
+.v-compo .acciones .der{margin-left:auto;display:flex;gap:var(--e-2)}
+.v-compo:focus-within{box-shadow:var(--bisel-a),inset 0 0 0 1px color-mix(in srgb,var(--acento) 35%,transparent),var(--sombra-flota)}
+
+/* ---------- header: capsule with the app name and round buttons ---------- */
+.v-cab{display:flex;align-items:center;gap:var(--e-2)}
+.v-yo{flex:1;min-width:0;display:flex;align-items:center;gap:var(--e-3);padding:5px var(--e-4) 5px 5px;border-radius:var(--r-capsula);text-align:left}
+.v-yo .logo{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;overflow:hidden;background:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 2px 6px rgba(0,0,0,.35)}
+.v-yo .logo img{width:86%;height:auto;display:block}   /* the app logo on white */
+.v-yo div{min-width:0}.v-yo b{display:block;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.v-yo .v-estado{margin-left:auto;font-size:0}
+
+/* ---------- floating tab bar + Create button ---------- */
+.v-tabs{position:fixed;z-index:30;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 14px);
+  display:flex;align-items:center;justify-content:space-around;height:70px;padding:0 6px;border-radius:var(--r-capsula);
+  background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.01) 50%),var(--vidrio-a);-webkit-backdrop-filter:var(--desenfoque-a);backdrop-filter:var(--desenfoque-a);box-shadow:var(--bisel-a),var(--sombra-flota)}
+.v-tabs>button{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;width:64px;padding:8px 0;border:0;border-radius:28px;background:none;font-size:11px;font-weight:500;color:var(--tinta-3);transition:color .2s}
+.v-tabs>button svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.v-tabs>button[aria-current="page"]{color:var(--tinta);background:linear-gradient(180deg,rgba(255,255,255,.15),rgba(255,255,255,.04));box-shadow:inset 0 1px 0 rgba(255,255,255,.4),inset 0 0 0 1px rgba(255,255,255,.08)}
+.v-tabs>button[aria-current="page"] svg{stroke:var(--acento-texto);filter:drop-shadow(0 0 6px color-mix(in srgb,var(--acento) 55%,transparent))}
+.v-tabs em{position:absolute;top:4px;right:12px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--acento);color:var(--en-acento);font:700 10.5px/17px var(--font-mono);font-style:normal;text-align:center}
+.v-fab{flex:none;width:58px;height:58px;border:0;border-radius:50%;display:grid;place-items:center;color:var(--en-acento);
+  background:radial-gradient(circle at 40% 25%,#fff,color-mix(in srgb,var(--acento) 70%,#fff) 30%,var(--acento) 60%,color-mix(in srgb,var(--acento) 78%,#000));box-shadow:inset 0 -6px 10px color-mix(in srgb,var(--acento) 38%,rgba(0,0,0,.5)),0 0 0 1px rgba(255,255,255,.4),0 10px 30px -6px color-mix(in srgb,var(--acento) 70%,transparent);transition:transform var(--t-gel) var(--curva-rebote)}
+.v-fab svg{width:26px;height:26px;stroke:currentColor;fill:none;stroke-width:2}
+.v-fab:active{transform:scale(1.08)}
+.v-tabs>.v-fab{width:58px;padding:0;border-radius:50%;margin-top:-26px;color:var(--en-acento);background:radial-gradient(circle at 40% 25%,#fff,color-mix(in srgb,var(--acento) 70%,#fff) 30%,var(--acento) 60%,color-mix(in srgb,var(--acento) 78%,#000))}
+
+/* ---------- bottom sheet ---------- */
+.v-velo{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,0);transition:background .25s}
+.v-velo.on{background:rgba(0,0,0,.45);-webkit-backdrop-filter:blur(14px) saturate(140%);backdrop-filter:blur(14px) saturate(140%)}
+.v-hoja{position:fixed;z-index:61;left:0;right:0;bottom:0;max-height:92dvh;overflow-y:auto;overscroll-behavior:contain;padding:var(--e-3) var(--e-4) calc(env(safe-area-inset-bottom,0px) + var(--e-4));
+  border-radius:var(--r-hoja) var(--r-hoja) 0 0;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.01) 30%),rgba(8,8,11,.92);box-shadow:var(--bisel-a),0 -20px 50px -20px rgba(0,0,0,.9);
+  transform:translateY(105%);transition:transform .32s cubic-bezier(.2,.8,.2,1)}
+.v-hoja.on{transform:none}
+.v-hoja .asa{width:38px;height:5px;border-radius:3px;background:var(--riel);margin:0 auto var(--e-3)}
+[data-theme="claro"] .v-hoja{background:linear-gradient(180deg,rgba(255,255,255,.9),rgba(255,255,255,.8)),var(--fondo)}
+
+/* ---------- floating toast ---------- */
+.v-aviso{position:fixed;z-index:90;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 100px);transform:translate(-50%,12px);max-width:min(520px,calc(100vw - 32px));padding:12px 18px;border-radius:var(--r-capsula);
+  background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.02)),rgba(14,14,18,.9);-webkit-backdrop-filter:var(--desenfoque-a);backdrop-filter:var(--desenfoque-a);box-shadow:var(--bisel-a),var(--sombra-flota);
+  font-size:14px;width:max-content;opacity:0;transition:opacity .25s,transform .3s var(--curva-rebote);pointer-events:none}
+.v-aviso.on{opacity:1;transform:translate(-50%,0)}
+
+/* ---------- light theme: button and capsule text follows the ink color ---------- */
+[data-theme="claro"] .v-btn:not(.pri){background:linear-gradient(180deg,rgba(255,255,255,.85),rgba(255,255,255,.55));box-shadow:var(--bisel-b),var(--sombra-clara)}
+[data-theme="claro"] .v-tabs{background:linear-gradient(180deg,rgba(255,255,255,.6),rgba(255,255,255,.2)),var(--vidrio-b);box-shadow:var(--bisel-b),var(--sombra-clara)}
+[data-theme="claro"] .v-tabs>button[aria-current="page"]{background:linear-gradient(180deg,#fff,rgba(255,255,255,.6));box-shadow:var(--bisel-b),0 4px 10px rgba(40,40,80,.15)}
+[data-theme="claro"] .v-placa{box-shadow:var(--bisel-b),var(--sombra-clara)}
+[data-theme="claro"] .v-compo{background:linear-gradient(180deg,rgba(255,255,255,.8),rgba(255,255,255,.5));box-shadow:var(--bisel-b),var(--sombra-clara)}
+
+@media (prefers-reduced-motion:reduce){.v-app *,.v-gota,.v-sw::after,.v-hoja,.v-aviso{transition:none !important}.v-sw::after{animation:none !important}}
+@media (prefers-reduced-transparency:reduce){.v-placa,.v-tabs,.v-compo,.v-btn{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgba(14,14,18,.97)}}
+
+/* ---------- a scene in a box: same as v-fondo, not fixed to the viewport ---------- */
+.v-escena{position:relative;overflow:hidden;background:var(--escena,url("fondo_tela.jpg")) center/cover no-repeat,var(--fondo);color:var(--tinta)}
+[data-theme="claro"] .v-escena{background-image:var(--escena-claro,url("fondo_claro.jpg"))}

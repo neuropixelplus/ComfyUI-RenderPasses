@@ -1,0 +1,16 @@
+[project]
+name = "comfyui-renderpasses"
+description = "Turn flat 2D background plates into relit beauties and compositing passes (depth, normals, albedo, layers, parallax, position, Cryptomatte, AI light passes) packed as a multilayer EXR + Nuke script — all with open-weights models inside ComfyUI."
+version = "0.1.0"
+license = { file = "LICENSE" }
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["numpy", "Pillow", "opencv-python", "OpenImageIO", "transformers", "sentencepiece"]
+
+[project.urls]
+Repository = "https://github.com/neuropixelplus/ComfyUI-RenderPasses"
+
+[tool.comfy]
+PublisherId = "neuropixelplus"
+DisplayName = "RenderPasses"
+Icon = ""
